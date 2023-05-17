@@ -1,7 +1,8 @@
-https://stackoverflow.com/questions/43262121/trying-to-use-fetch-and-pass-in-mode-no-cors#:~:text=However%2C%20one%20thing,with%205%20commands%3A
-
+# more info here : https://stackoverflow.com/questions/43262121/trying-to-use-fetch-and-pass-in-mode-no-cors#:~:text=However%2C%20one%20thing,with%205%20commands%3A
+# I keep the cors proxy api on render.com (https://corsproxyanywhere.onrender.com) and have a cron job that keeps that service awake (every 10 minutes): https://console.cron-job.org/jobs
 git clone https://github.com/Rob--W/cors-anywhere.git
 cd cors-anywhere/
 npm install
 heroku create
 git push heroku master
+

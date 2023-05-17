@@ -14,14 +14,18 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
 });
 
 function hideCodePreviews() {
-  const codePreviews = document.getElementsByClassName("code-preview-container");
+  const codePreviews = document.getElementsByClassName(
+    "code-preview-container"
+  );
   for (const preview of codePreviews) {
     preview.style.display = "none";
   }
 }
 
 function showCodePreviews() {
-  const codePreviews = document.getElementsByClassName("code-preview-container");
+  const codePreviews = document.getElementsByClassName(
+    "code-preview-container"
+  );
   for (const preview of codePreviews) {
     preview.style.display = "block";
   }
@@ -39,7 +43,7 @@ for (const result of searchResults) {
       previewContainer.classList.add("code-preview-container");
       previewContainer.classList.add("code-snippet-container");
       // how to concatenate strings in js?
-      const proxyUrl = "https://morning-cliffs-14753.herokuapp.com/";
+      const proxyUrl = "https://corsproxyanywhere.onrender.com/";
       fetch(proxyUrl + linkElement.href)
         .then((response) => {
           return response.clone().text();
@@ -72,7 +76,6 @@ for (const result of searchResults) {
             button.classList.add("copy-button");
             previewContainer.appendChild(button);
 
-
             previewContainer.appendChild(codeElement);
 
             button.addEventListener("click", () => {
@@ -88,7 +91,7 @@ for (const result of searchResults) {
               goToAnswerButton.textContent = "Go to Answer";
               previewContainer.appendChild(goToAnswerButton);
               goToAnswerButton.addEventListener("click", () => {
-                location.href=answerUrl;
+                location.href = answerUrl;
               });
             }
           } else {
@@ -183,6 +186,7 @@ function extractCodeSnippetFromHTML(html) {
     codeSnippet = codeSnippet.replace(/&reg;/g, "®");
     codeSnippet = codeSnippet.replace(/&ldquo;/g, "“");
     codeSnippet = codeSnippet.replace(/&rdquo;/g, "”");
+    codeSnippet = codeSnippet.replace(/&#47;/g, "/");
     // Add more replacements as needed
   }
   if (codeSnippet && codeSnippet.length > 1000) {
