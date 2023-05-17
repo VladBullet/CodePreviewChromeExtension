@@ -3,12 +3,12 @@
   "name": "Code Preview",
   "version": "1.0",
   "description": "A Chrome extension to preview code snippets and answers to code questions in Google search results.",
-  "permissions": ["scripting", "activeTab", "http://*/*", "https://*/*"],
+  "permissions": ["scripting", "activeTab"],
   "content_scripts": [
     {
       "matches": ["https://www.google.com/*"],
-      "js": ["contentScript.js","lib/he.js","lib/prism.js"],
-      "css": ["lib/prism.css","lib/site.css"],
+      "js": ["contentScript.js", "lib/he.js", "lib/prism.js"],
+      "css": ["lib/prism.css", "lib/site.css"],
       "run_at": "document_idle"
     }
   ],

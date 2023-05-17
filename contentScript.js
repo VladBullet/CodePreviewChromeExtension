@@ -44,7 +44,6 @@ for (const result of searchResults) {
 
 
             previewContainer.appendChild(codeElement);
-            highlightCodeSnippet(codeElement);
 
             button.addEventListener("click", () => {
               copyToClipboard(codeSnippet);
@@ -67,6 +66,7 @@ for (const result of searchResults) {
           }
         });
       result.appendChild(previewContainer);
+      highlightElement(previewContainer);
     }
   } catch (exception) {
     console.error(exception);
@@ -88,6 +88,7 @@ function isCodeURL(url) {
     "java",
     "stackexchange",
     "sql",
+    "getbootstrap",
   ];
   const codePatterns = [
     /\/blog\//i,
@@ -98,6 +99,7 @@ function isCodeURL(url) {
     /learn\.microsoft\.com/i,
     /c-sharpcorner\.com/i,
     /connectionstrings\.com/i,
+    /getbootstrap\.com/i,
     /docs\.docker\.com/i,
   ];
 
@@ -159,7 +161,7 @@ function extractCodeSnippetFromHTML(html) {
   return codeSnippet;
 }
 
-function highlightCodeSnippet(codeSnippet) {
+function highlightElement(codeElement) {
   const linkElement = document.createElement("link");
   linkElement.rel = "stylesheet";
   linkElement.href = chrome.runtime.getURL("lib/prism.css");
@@ -170,37 +172,37 @@ function highlightCodeSnippet(codeSnippet) {
   prismScript.onload = () => {
     // Prism is loaded, continue with highlighting
     // Apply syntax highlighting
-    Prism.highlightCodeSnippet(codeSnippet);
+    Prism.highlightAllUnder(codeElement);
 
     // Move the highlighted code element to the preview container
   };
 }
-function detectProgrammingLanguage1(codeSnippet) {
-  // Define regular expressions for language detection
-  const languageRegexMap = [
-    {
-      language: "javascript",
-      regex: /(?:\b|['"\s])(?:javascript|js|node\.?js)\b/gi,
-    },
-    { language: "java", regex: /(?:\b|['"\s])(?:java|jdk)\b/gi },
-    { language: "python", regex: /(?:\b|['"\s])(?:python|py)\b/gi },
-    { language: "html", regex: /(?:\b|['"\s])(?:html|html5|htm)\b/gi },
-    { language: "csharp", regex: /(?:\b|['"\s])(?:c#|\.net|csharp)\b/gi },
-    { language: "c", regex: /(?:\b|['"\s])(?:c|c-lang|clang)\b/gi },
-    { language: "cpp", regex: /(?:\b|['"\s])(?:c\+\+|cpp)\b/gi },
-    // Add more language regex patterns as needed
-  ];
+// function detectProgrammingLanguage1(codeSnippet) {
+//   // Define regular expressions for language detection
+//   const languageRegexMap = [
+//     {
+//       language: "javascript",
+//       regex: /(?:\b|['"\s])(?:javascript|js|node\.?js)\b/gi,
+//     },
+//     { language: "java", regex: /(?:\b|['"\s])(?:java|jdk)\b/gi },
+//     { language: "python", regex: /(?:\b|['"\s])(?:python|py)\b/gi },
+//     { language: "html", regex: /(?:\b|['"\s])(?:html|html5|htm)\b/gi },
+//     { language: "csharp", regex: /(?:\b|['"\s])(?:c#|\.net|csharp)\b/gi },
+//     { language: "c", regex: /(?:\b|['"\s])(?:c|c-lang|clang)\b/gi },
+//     { language: "cpp", regex: /(?:\b|['"\s])(?:c\+\+|cpp)\b/gi },
+//     // Add more language regex patterns as needed
+//   ];
 
-  // Match against the regular expressions
-  for (const { language, regex } of languageRegexMap) {
-    if (regex.test(codeSnippet)) {
-      return language;
-    }
-  }
+//   // Match against the regular expressions
+//   for (const { language, regex } of languageRegexMap) {
+//     if (regex.test(codeSnippet)) {
+//       return language;
+//     }
+//   }
 
-  // If no specific language is detected, assume it's plain text or unknown
-  return "javascript";
-}
+//   // If no specific language is detected, assume it's plain text or unknown
+//   return "javascript";
+// }
 function detectProgrammingLanguage(codeSnippet) {
   // Define regular expressions for language detection
   const languageRegexMap = [
