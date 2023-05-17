@@ -36,6 +36,7 @@
         "lib/prism.css",
         "lib/site.css",
         "contentScript.js",
+        "popup.js",
         "backgroundScript.js",
         "img/icon16.png",
         "img/icon48.png",

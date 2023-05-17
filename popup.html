@@ -3,9 +3,52 @@
 <head>
   <title>Code Preview</title>
   <style>
+     .toggle-switch {
+        display: inline-block;
+        width: 60px;
+        height: 34px;
+        position: relative;
+        cursor: pointer;
+      }
+      .toggle-switch input[type="checkbox"] {
+        display: none;
+      }
+      .toggle-slider {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        border-radius: 34px;
+        transition: all 0.3s ease;
+      }
+      .toggle-slider:before {
+        content: "";
+        position: absolute;
+        width: 30px;
+        height: 30px;
+        top: 2px;
+        left: 2px;
+        background-color: white;
+        border-radius: 50%;
+        transition: all 0.3s ease;
+      }
+      input[type="checkbox"]:checked + .toggle-slider {
+        background-color: #2196f3;
+      }
+      input[type="checkbox"]:checked + .toggle-slider:before {
+        transform: translateX(26px);
+      }
+      .toggle-label {
+        display: inline-block;
+        margin-left: 10px;
+        vertical-align: middle;
+      }
+
     body {
       width: 300px;
-      height: 200px;
+      height: 300px;
       overflow: hidden;
       font-family: Arial, sans-serif;
       font-size: 14px;
@@ -22,9 +65,18 @@
       margin-bottom: 0;
     }
   </style>
+     <script src="popup.js"></script>
 </head>
 <body>
   <h1>Code Preview</h1>
-  <p>This extension adds a preview on the right side of Google search results for URLs that may contain code snippets or answers to code questions.</p>
+  <p>This extension adds a preview under Google search results for URLs that may contain code snippets or answers to code questions.</p>
+  <p>The extension will return either the top asnwer for your question (A "Go to answer" button will appear) or code snippets from within the search result.</p>
+  <p>Feel free to copy parts of the code or use the copy to clipboard button.</p>
+<br/>
+  <label class="toggle-switch">
+    <input type="checkbox" id="toggleButton" />
+    <span class="toggle-slider"></span>
+  </label>
+  <span class="toggle-label">Toggle Extension</span>
 </body>
 </html>

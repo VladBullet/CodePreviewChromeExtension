@@ -1,3 +1,33 @@
+let isExtensionEnabled = true;
+
+chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+  if (message.action === "getToggleState") {
+    sendResponse({ enabled: isExtensionEnabled });
+  } else if (message.action === "setToggleState") {
+    isExtensionEnabled = message.enabled;
+    if (isExtensionEnabled) {
+      showCodePreviews();
+    } else {
+      hideCodePreviews();
+    }
+  }
+});
+
+function hideCodePreviews() {
+  const codePreviews = document.getElementsByClassName("code-preview-container");
+  for (const preview of codePreviews) {
+    preview.style.display = "none";
+  }
+}
+
+function showCodePreviews() {
+  const codePreviews = document.getElementsByClassName("code-preview-container");
+  for (const preview of codePreviews) {
+    preview.style.display = "block";
+  }
+}
+
+// --------------------------------------------------------------------
 const searchResults = document.querySelectorAll(".g");
 console.log("IM HERE", searchResults);
 for (const result of searchResults) {
