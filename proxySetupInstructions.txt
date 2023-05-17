@@ -1,0 +1,7 @@
+https://stackoverflow.com/questions/43262121/trying-to-use-fetch-and-pass-in-mode-no-cors#:~:text=However%2C%20one%20thing,with%205%20commands%3A
+
+git clone https://github.com/Rob--W/cors-anywhere.git
+cd cors-anywhere/
+npm install
+heroku create
+git push heroku master
