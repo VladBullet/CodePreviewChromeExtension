@@ -33,11 +33,9 @@ function showCodePreviews() {
 
 // --------------------------------------------------------------------
 const searchResults = document.querySelectorAll(".g");
-console.log("IM HERE", searchResults);
 for (const result of searchResults) {
   try {
     const linkElement = result.querySelector('a[href^="http"]');
-    console.log("linkElement", linkElement.href);
     if (linkElement && isCodeURL(linkElement.href)) {
       const previewContainer = document.createElement("div");
       previewContainer.classList.add("code-preview-container");
@@ -56,7 +54,6 @@ for (const result of searchResults) {
             codeSnippet = codeSnippet.replace(/;/g, ";\n");
             codeSnippet = removeDuplicateLineBreaks(codeSnippet);
             const answerUrl = getAnswerUrl(html);
-            console.log("ANSWER:", answerUrl);
             // Create a <link> element for the Prism theme CSS
             var language = detectProgrammingLanguage(codeSnippet);
             // previewContainer.style.border = "1px solid #ccc";
@@ -122,10 +119,18 @@ function isCodeURL(url) {
     "stackexchange",
     "sql",
     "getbootstrap",
+    "bootstrap",
+    "atlassian",
+    "git",
+    "linux",
+    "debian", 
+    "ubuntu",
+    "tutorial"
   ];
   const codePatterns = [
     /\/blog\//i,
     /\/tutorial\//i,
+    /\/code\//i,
     /stackoverflow\.com/i,
     /stackexchange\.com/i,
     /docs\.microsoft\.com/i,
@@ -134,6 +139,9 @@ function isCodeURL(url) {
     /connectionstrings\.com/i,
     /getbootstrap\.com/i,
     /docs\.docker\.com/i,
+    /atlassian\.com/i,
+    /git-scm\.com/i,
+    /tutorialspoint\.com/i
   ];
 
   for (const keyword of codeKeywords) {
