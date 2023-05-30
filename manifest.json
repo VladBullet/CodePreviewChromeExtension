@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Code Preview",
-  "version": "1.0",
+  "version": "1.1",
   "description": "A Chrome extension to preview code snippets and answers to code questions in Google search results.",
   "permissions": ["scripting", "activeTab"],
   "content_scripts": [

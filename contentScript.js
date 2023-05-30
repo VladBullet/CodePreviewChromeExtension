@@ -120,10 +120,18 @@ function isCodeURL(url) {
     "stackexchange",
     "sql",
     "getbootstrap",
+    "bootstrap",
+    "atlassian",
+    "git",
+    "linux",
+    "debian", 
+    "ubuntu",
+    "tutorial"
   ];
   const codePatterns = [
     /\/blog\//i,
     /\/tutorial\//i,
+    /\/code\//i,
     /stackoverflow\.com/i,
     /stackexchange\.com/i,
     /docs\.microsoft\.com/i,
@@ -132,6 +140,9 @@ function isCodeURL(url) {
     /connectionstrings\.com/i,
     /getbootstrap\.com/i,
     /docs\.docker\.com/i,
+    /atlassian\.com/i,
+    /git-scm\.com/i,
+    /tutorialspoint\.com/i
   ];
 
   for (const keyword of codeKeywords) {
