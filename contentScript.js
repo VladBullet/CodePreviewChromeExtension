@@ -33,11 +33,9 @@ function showCodePreviews() {
 
 // --------------------------------------------------------------------
 const searchResults = document.querySelectorAll(".g");
-console.log("IM HERE", searchResults);
 for (const result of searchResults) {
   try {
     const linkElement = result.querySelector('a[href^="http"]');
-    console.log("linkElement", linkElement.href);
     if (linkElement && isCodeURL(linkElement.href)) {
       const previewContainer = document.createElement("div");
       previewContainer.classList.add("code-preview-container");
@@ -56,7 +54,6 @@ for (const result of searchResults) {
             codeSnippet = codeSnippet.replace(/;/g, ";\n");
             codeSnippet = removeDuplicateLineBreaks(codeSnippet);
             const answerUrl = getAnswerUrl(html);
-            console.log("ANSWER:", answerUrl);
             // Create a <link> element for the Prism theme CSS
             var language = detectProgrammingLanguage(codeSnippet);
             // previewContainer.style.border = "1px solid #ccc";
@@ -69,6 +66,7 @@ for (const result of searchResults) {
             preElement.classList.add("language-" + language);
             preElement.style.whiteSpace = "pre-wrap";
             preElement.style.wordBreak = "break-all";
+            preElement.style.paddingTop = "30px";
             codeElement.appendChild(preElement);
 
             const button = document.createElement("button");
