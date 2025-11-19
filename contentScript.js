@@ -32,24 +32,105 @@ function showCodePreviews() {
 }
 
 // --------------------------------------------------------------------
-const searchResults = document.querySelectorAll(".g");
+// Try multiple selectors for different Google layouts
+let searchResults = document.querySelectorAll(".g");
+console.log(`[CodePreview] Found ${searchResults.length} search results with .g selector`);
+
+if (searchResults.length === 0) {
+  // Try alternative selector
+  searchResults = document.querySelectorAll('div[data-hveid]');
+  console.log(`[CodePreview] Trying alternative selector: found ${searchResults.length} results`);
+}
+
+if (searchResults.length === 0) {
+  // Try another alternative
+  searchResults = document.querySelectorAll('.MjjYud');
+  console.log(`[CodePreview] Trying .MjjYud selector: found ${searchResults.length} results`);
+}
+
+console.log(`[CodePreview] Processing ${searchResults.length} search results`);
+
+// Track processed URLs to avoid duplicates
+const processedUrls = new Set();
+
 for (const result of searchResults) {
   try {
     const linkElement = result.querySelector('a[href^="http"]');
     if (linkElement && isCodeURL(linkElement.href)) {
+      // Skip if already processed
+      if (processedUrls.has(linkElement.href)) {
+        console.log(`[CodePreview] Skipping duplicate: ${linkElement.href}`);
+        continue;
+      }
+      processedUrls.add(linkElement.href);
+      console.log(`[CodePreview] Processing code URL: ${linkElement.href}`);
       const previewContainer = document.createElement("div");
       previewContainer.classList.add("code-preview-container");
       previewContainer.classList.add("code-snippet-container");
-      // how to concatenate strings in js?
-      const proxyUrl = "https://corsproxyanywhere.onrender.com/";
-      fetch(proxyUrl + linkElement.href)
+      
+      // Try direct fetch first, then fallback to proxy
+      const tryFetch = async (url) => {
+        // Try direct fetch first
+        try {
+          console.log(`[CodePreview] Trying direct fetch: ${url}`);
+          const response = await fetch(url, { mode: 'cors' });
+          if (response.ok) {
+            console.log(`[CodePreview] Direct fetch succeeded!`);
+            return response;
+          }
+        } catch (e) {
+          console.log(`[CodePreview] Direct fetch failed (expected for CORS): ${e.message}`);
+        }
+        
+        // Try multiple proxy options
+        const proxies = [
+          "https://corsproxyanywhere.onrender.com/",
+          "https://api.allorigins.win/raw?url=",
+          "https://cors-anywhere.herokuapp.com/"
+        ];
+        
+        for (const proxyUrl of proxies) {
+          try {
+            console.log(`[CodePreview] Trying proxy: ${proxyUrl}`);
+            const response = await fetch(proxyUrl + encodeURIComponent(url));
+            if (response.ok) {
+              console.log(`[CodePreview] Proxy ${proxyUrl} succeeded!`);
+              return response;
+            }
+          } catch (e) {
+            console.log(`[CodePreview] Proxy ${proxyUrl} failed: ${e.message}`);
+          }
+        }
+        
+        // Final fallback: Use chrome.scripting API to fetch in a new context
+        console.log(`[CodePreview] All proxies failed, trying chrome.scripting API fallback`);
+        try {
+          const response = await fetchViaScripting(url);
+          if (response) {
+            console.log(`[CodePreview] chrome.scripting API succeeded!`);
+            return response;
+          }
+        } catch (e) {
+          console.log(`[CodePreview] chrome.scripting API failed: ${e.message}`);
+        }
+        
+        throw new Error('All fetch methods failed');
+      };
+      
+      tryFetch(linkElement.href)
         .then((response) => {
+          console.log(`[CodePreview] Fetch response status: ${response.status}`);
           return response.clone().text();
         })
         .then((html) => {
+          console.log(`[CodePreview] HTML received, length: ${html.length}`);
+
           let codeSnippet = extractTopAnswer(html);
+          console.log(`[CodePreview] Top answer found: ${!!codeSnippet}`);
           if (!codeSnippet) codeSnippet = extractCodeSnippetFromHTML(html);
+          console.log(`[CodePreview] Code snippet found: ${!!codeSnippet}`);
           if (codeSnippet) {
+            codeSnippet = cleanHtmlTags(codeSnippet);
             codeSnippet = replaceHtmlCharacters(codeSnippet);
             codeSnippet = codeSnippet.replace(/;/g, ";\n");
             codeSnippet = removeDuplicateLineBreaks(codeSnippet);
@@ -93,8 +174,13 @@ for (const result of searchResults) {
               });
             }
           } else {
+            console.log(`[CodePreview] No code found for ${linkElement.href}`);
             previewContainer.textContent = "Code Preview not available.";
           }
+        })
+        .catch((error) => {
+          console.error(`[CodePreview] Fetch error:`, error);
+          previewContainer.textContent = "Failed to load preview (proxy error).";
         });
       result.appendChild(previewContainer);
       highlightElement(previewContainer);
@@ -165,23 +251,36 @@ function extractCodeSnippetFromHTML(html) {
 
   let codeSnippet = null;
 
-  const codeMatches = html.match(codeRegex);
-  if (codeMatches) {
-    codeSnippet = codeMatches
-      .map((match) =>
-        match.replace(/<\/?code[^>]*>/gi, "").replace(/<br\s*\/?>/gi, "\n")
-      )
-      .join("\n");
-  }
-
-  if (!codeSnippet) {
-    const preMatches = html.match(preRegex);
-    if (preMatches) {
-      codeSnippet = preMatches
+  // Try pre first (usually contains full code blocks)
+  const preMatches = html.match(preRegex);
+  if (preMatches && preMatches.length > 0) {
+    console.log(`[CodePreview] Found ${preMatches.length} <pre> tags`);
+    // Filter out very short snippets (likely not code)
+    const validPre = preMatches.filter(match => {
+      const cleaned = match.replace(/<[^>]*>/g, '').trim();
+      return cleaned.length > 20; // At least 20 chars
+    });
+    
+    if (validPre.length > 0) {
+      codeSnippet = validPre
+        .slice(0, 3) // Take first 3 code blocks
         .map((match) =>
           match.replace(/<\/?pre[^>]*>/gi, "").replace(/<br\s*\/?>/gi, "\n")
         )
         .join("\n\n");
+    }
+  }
+
+  if (!codeSnippet) {
+    const codeMatches = html.match(codeRegex);
+    if (codeMatches && codeMatches.length > 0) {
+      console.log(`[CodePreview] Found ${codeMatches.length} <code> tags`);
+      codeSnippet = codeMatches
+        .slice(0, 5) // Take first 5 code snippets
+        .map((match) =>
+          match.replace(/<\/?code[^>]*>/gi, "").replace(/<br\s*\/?>/gi, "\n")
+        )
+        .join("\n");
     }
   }
   if (codeSnippet) {
@@ -307,7 +406,7 @@ function extractTopAnswer(responseHTML) {
     {
       domain: "stackoverflow.com",
       regex:
-        /<div\s+class="answer[^"]*">\s*<div\s+class="js-post-body"[^>]*>([\s\S]*?)<\/div>/i,
+        /<div\s+class="answercell[^"]*"[\s\S]*?<div\s+class="s-prose[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
     },
     {
       domain: "github.com",
@@ -317,17 +416,22 @@ function extractTopAnswer(responseHTML) {
     {
       domain: "stackexchange.com",
       regex:
-        /<div\s+id="answers[^"]*">\s*<div\s+class="answer[^"]*">\s*<div\s+class="js-post-body"[^>]*>([\s\S]*?)<\/div>/i,
+        /<div\s+class="answercell[^"]*"[\s\S]*?<div\s+class="s-prose[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
     },
     {
       domain: "webmasters.stackexchange.com",
       regex:
-        /<div\s+class="answer[^"]*">\s*<div\s+class="js-post-body"[^>]*>([\s\S]*?)<\/div>/i,
+        /<div\s+class="answercell[^"]*"[\s\S]*?<div\s+class="s-prose[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
     },
     {
       domain: "learn.microsoft.com",
       regex:
-        /<div\s+class="row-fluid\s+answer[^"]*">\s*<div\s+class="content"[^>]*>([\s\S]*?)<\/div>/i,
+        /<code\s+class="lang-[^"]*"[^>]*>([\s\S]*?)<\/code>/i,
+    },
+    {
+      domain: "docs.microsoft.com",
+      regex:
+        /<code\s+class="lang-[^"]*"[^>]*>([\s\S]*?)<\/code>/i,
     },
     {
       domain: "c-sharpcorner.com",
@@ -344,7 +448,7 @@ function extractTopAnswer(responseHTML) {
     },
     {
       domain: "reddit.com",
-      regex: /<div\s+class="Post-body"[^>]*>([\s\S]*?)<\/div>/i,
+      regex: /<code[^>]*>([\s\S]*?)<\/code>/i,
     },
     {
       domain: "dzone.com",
@@ -357,11 +461,15 @@ function extractTopAnswer(responseHTML) {
     const { domain, regex } = website;
 
     if (responseHTML.includes(domain)) {
+      console.log(`[CodePreview] Trying to extract from ${domain}`);
       const matches = responseHTML.match(regex);
 
       if (matches && matches[1]) {
+        console.log(`[CodePreview] Successfully extracted answer from ${domain}, length: ${matches[1].length}`);
         topAnswer = matches[1];
         break;
+      } else {
+        console.log(`[CodePreview] No match found for ${domain}`);
       }
     }
   }
@@ -452,10 +560,18 @@ function getAnswerUrl(html) {
 
   // Example for Learn Microsoft
   const learnMicrosoftAnswerMatch = html.match(
-    /https?:\/\/learn\.microsoft\.com\/.+\/\d+/
+    /https?:\/\/learn\.microsoft\.com\/[^"'\s<>]+/
   );
   if (learnMicrosoftAnswerMatch) {
     return learnMicrosoftAnswerMatch[0];
+  }
+  
+  // Example for Docs Microsoft
+  const docsMicrosoftAnswerMatch = html.match(
+    /https?:\/\/docs\.microsoft\.com\/[^"'\s<>]+/
+  );
+  if (docsMicrosoftAnswerMatch) {
+    return docsMicrosoftAnswerMatch[0];
   }
 
   // Example for C# Corner
@@ -504,6 +620,49 @@ function removeDuplicateLineBreaks(text) {
   return text.replace(/\n+/g, "\n");
 }
 
+function cleanHtmlTags(html) {
+  let text = html;
+  
+  // Convert common HTML tags to readable format
+  text = text.replace(/<p[^>]*>/gi, "\n");
+  text = text.replace(/<\/p>/gi, "\n");
+  text = text.replace(/<br\s*\/?>/gi, "\n");
+  text = text.replace(/<div[^>]*>/gi, "\n");
+  text = text.replace(/<\/div>/gi, "\n");
+  text = text.replace(/<h[1-6][^>]*>/gi, "\n\n## ");
+  text = text.replace(/<\/h[1-6]>/gi, "\n");
+  text = text.replace(/<li[^>]*>/gi, "\n• ");
+  text = text.replace(/<\/li>/gi, "");
+  text = text.replace(/<ul[^>]*>/gi, "\n");
+  text = text.replace(/<\/ul>/gi, "\n");
+  text = text.replace(/<ol[^>]*>/gi, "\n");
+  text = text.replace(/<\/ol>/gi, "\n");
+  
+  // Convert links to readable format: [text](url)
+  text = text.replace(/<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, "$2 ($1)");
+  
+  // Convert code tags
+  text = text.replace(/<code[^>]*>/gi, "`");
+  text = text.replace(/<\/code>/gi, "`");
+  text = text.replace(/<pre[^>]*>/gi, "\n```\n");
+  text = text.replace(/<\/pre>/gi, "\n```\n");
+  
+  // Convert formatting tags
+  text = text.replace(/<strong[^>]*>|<b[^>]*>/gi, "**");
+  text = text.replace(/<\/strong>|<\/b>/gi, "**");
+  text = text.replace(/<em[^>]*>|<i[^>]*>/gi, "*");
+  text = text.replace(/<\/em>|<\/i>/gi, "*");
+  
+  // Remove all remaining HTML tags
+  text = text.replace(/<[^>]+>/g, "");
+  
+  // Clean up whitespace
+  text = text.replace(/\n\s*\n\s*\n/g, "\n\n"); // Max 2 line breaks
+  text = text.trim();
+  
+  return text;
+}
+
 function copyToClipboard(text) {
   const textarea = document.createElement("textarea");
   textarea.value = text;
@@ -511,4 +670,50 @@ function copyToClipboard(text) {
   textarea.select();
   document.execCommand("copy");
   document.body.removeChild(textarea);
+}
+
+// Chrome scripting API fallback - creates isolated context
+async function fetchViaScripting(url) {
+  return new Promise((resolve, reject) => {
+    // Create a hidden iframe to fetch the content
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.sandbox = 'allow-same-origin allow-scripts';
+    
+    let timeoutId = setTimeout(() => {
+      document.body.removeChild(iframe);
+      reject(new Error('Timeout'));
+    }, 10000);
+    
+    iframe.onload = async () => {
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        const html = iframeDoc.documentElement.outerHTML;
+        
+        clearTimeout(timeoutId);
+        document.body.removeChild(iframe);
+        
+        // Return a Response-like object
+        resolve({
+          ok: true,
+          status: 200,
+          text: async () => html,
+          clone: function() { return this; }
+        });
+      } catch (e) {
+        clearTimeout(timeoutId);
+        document.body.removeChild(iframe);
+        reject(e);
+      }
+    };
+    
+    iframe.onerror = () => {
+      clearTimeout(timeoutId);
+      document.body.removeChild(iframe);
+      reject(new Error('iframe load failed'));
+    };
+    
+    document.body.appendChild(iframe);
+    iframe.src = url;
+  });
 }
