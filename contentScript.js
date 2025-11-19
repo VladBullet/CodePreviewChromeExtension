@@ -5,8 +5,13 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     sendResponse({ enabled: isExtensionEnabled });
   } else if (message.action === "setToggleState") {
     isExtensionEnabled = message.enabled;
+    // Persist state
+    chrome.storage.local.set({ extensionEnabled: isExtensionEnabled });
+    
     if (isExtensionEnabled) {
       showCodePreviews();
+      // Reload the page to process search results
+      window.location.reload();
     } else {
       hideCodePreviews();
     }
@@ -31,31 +36,50 @@ function showCodePreviews() {
   }
 }
 
-// --------------------------------------------------------------------
-// Try multiple selectors for different Google layouts
-let searchResults = document.querySelectorAll(".g");
-console.log(
-  `[CodePreview] Found ${searchResults.length} search results with .g selector`
-);
+// Initialize extension - load state and process search results
+function initializeExtension() {
+  // Load initial state from storage
+  chrome.storage.local.get(['extensionEnabled'], function(result) {
+    isExtensionEnabled = result.extensionEnabled !== undefined ? result.extensionEnabled : true;
+    console.log(`[CodePreview] Extension enabled: ${isExtensionEnabled}`);
+    
+    if (!isExtensionEnabled) {
+      console.log('[CodePreview] Extension is disabled, skipping processing');
+      return;
+    }
+    
+    // Extension is enabled, process search results
+    // Try multiple selectors for different Google layouts
+    let searchResults = document.querySelectorAll(".g");
+    console.log(
+      `[CodePreview] Found ${searchResults.length} search results with .g selector`
+    );
 
-if (searchResults.length === 0) {
-  // Try alternative selector
-  searchResults = document.querySelectorAll("div[data-hveid]");
-  console.log(
-    `[CodePreview] Trying alternative selector: found ${searchResults.length} results`
-  );
+    if (searchResults.length === 0) {
+      // Try alternative selector
+      searchResults = document.querySelectorAll("div[data-hveid]");
+      console.log(
+        `[CodePreview] Trying alternative selector: found ${searchResults.length} results`
+      );
+    }
+
+    if (searchResults.length === 0) {
+      // Try another alternative
+      searchResults = document.querySelectorAll(".MjjYud");
+      console.log(
+        `[CodePreview] Trying .MjjYud selector: found ${searchResults.length} results`
+      );
+    }
+
+    console.log(`[CodePreview] Processing ${searchResults.length} search results`);
+    
+    if (searchResults.length > 0) {
+      processSearchResults(searchResults);
+    }
+  });
 }
 
-if (searchResults.length === 0) {
-  // Try another alternative
-  searchResults = document.querySelectorAll(".MjjYud");
-  console.log(
-    `[CodePreview] Trying .MjjYud selector: found ${searchResults.length} results`
-  );
-}
-
-console.log(`[CodePreview] Processing ${searchResults.length} search results`);
-
+function processSearchResults(searchResults) {
 // Track processed URLs and content to avoid duplicates
 const processedUrls = new Set();
 const processedContent = new Set();
@@ -324,6 +348,10 @@ for (const result of searchResults) {
     console.error(exception);
   }
 }
+}
+
+// Start the extension
+initializeExtension();
 
 /**
  * Appends preview container intelligently to handle both regular and columnar layouts
@@ -331,6 +359,14 @@ for (const result of searchResults) {
  * @param {HTMLElement} previewContainer - The preview container to append
  */
 function appendPreviewContainer(result, previewContainer) {
+  // Verify the result element is still in the DOM
+  if (!result || !document.body.contains(result)) {
+    console.log(
+      "[CodePreview] Result element not in DOM, cannot append preview"
+    );
+    return;
+  }
+
   // Check if this is part of a columnar layout (like images grid)
   // Look for parent container that might contain multiple columns
   let targetContainer = result;
@@ -418,8 +454,29 @@ function appendPreviewContainer(result, previewContainer) {
       }
     }
   } else {
-    // Regular layout - append directly to result
-    result.appendChild(previewContainer);
+    // Regular layout - try to find a stable insertion point
+    // Look for the main content div within the result
+    const contentDiv =
+      result.querySelector("[data-content-feature]") ||
+      result.querySelector(".VwiC3b") ||
+      result;
+
+    // Verify result is still connected before appending
+    if (document.body.contains(result)) {
+      // Insert after the main content, not inside it
+      if (contentDiv && contentDiv.parentElement) {
+        contentDiv.parentElement.insertBefore(
+          previewContainer,
+          contentDiv.nextSibling
+        );
+      } else {
+        result.appendChild(previewContainer);
+      }
+    } else {
+      console.log(
+        "[CodePreview] Result element disconnected, cannot append preview"
+      );
+    }
   }
 }
 

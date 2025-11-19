@@ -35,6 +35,9 @@
   text-decoration: none;
   z-index: 1000 !important;
   pointer-events: auto !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .extend-button {
