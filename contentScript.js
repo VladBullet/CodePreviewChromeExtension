@@ -179,7 +179,9 @@ for (const result of searchResults) {
               `[CodePreview] Code snippet preview:`,
               codeSnippet.substring(0, 200)
             );
-            console.log(`[CodePreview] Full snippet length: ${codeSnippet.length} chars`);
+            console.log(
+              `[CodePreview] Full snippet length: ${codeSnippet.length} chars`
+            );
             // previewContainer.style.border = "1px solid #ccc";
             // previewContainer.style.borderRadius = "15px";
             // previewContainer.style.padding = "5px";
@@ -247,8 +249,11 @@ for (const result of searchResults) {
               extendButton.addEventListener("click", () => {
                 const currentCode = codeElement.textContent;
                 const collapsedCode = lines.slice(0, maxLines).join("\n");
-                
-                if (currentCode === collapsedCode || extendButton.innerText === "Extend") {
+
+                if (
+                  currentCode === collapsedCode ||
+                  extendButton.innerText === "Extend"
+                ) {
                   // Expand
                   codeElement.textContent = codeSnippet;
                   extendButton.innerText = "Collapse";
@@ -257,7 +262,7 @@ for (const result of searchResults) {
                   codeElement.textContent = collapsedCode;
                   extendButton.innerText = "Extend";
                 }
-                
+
                 // Re-highlight after changing content
                 if (typeof Prism !== "undefined") {
                   Prism.highlightElement(codeElement);
@@ -277,7 +282,7 @@ for (const result of searchResults) {
               goToAnswerButton.textContent = "Go to Answer";
               previewContainer.appendChild(goToAnswerButton);
             }
-            
+
             // Apply syntax highlighting after content is added
             console.log("[CodePreview] About to highlight initial content");
             highlightElement(previewContainer);
@@ -598,19 +603,26 @@ function detectProgrammingLanguage(codeSnippet) {
       { pattern: /\bpublic\s+record\s+\w+/i, score: 10 },
       { pattern: /\brecord\s+\w+\s*\(/i, score: 10 },
       {
-        pattern: /\b(public|private|protected|internal)\s+(static\s+)?(class|interface|enum|struct|record)\s+\w+/i,
+        pattern:
+          /\b(public|private|protected|internal)\s+(static\s+)?(class|interface|enum|struct|record)\s+\w+/i,
         score: 10,
       },
       {
-        pattern: /\b(public|private|protected|internal)\s+(static\s+)?(void|string|int|bool|double|float|decimal|long|short|byte|char|object|Task)\s+\w+\s*\(/i,
+        pattern:
+          /\b(public|private|protected|internal)\s+(static\s+)?(void|string|int|bool|double|float|decimal|long|short|byte|char|object|Task)\s+\w+\s*\(/i,
         score: 9,
       },
       {
-        pattern: /\b(string|int|bool|double|float|decimal|var|long|short|byte|char|object)\s+\w+\s*=/i,
+        pattern:
+          /\b(string|int|bool|double|float|decimal|var|long|short|byte|char|object)\s+\w+\s*=/i,
         score: 6,
       },
       { pattern: /\bnew\s*\([^)]*\);/i, score: 8 },
-      { pattern: /\b(List|Dictionary|ArrayList|HashSet|Queue|Stack|IEnumerable|ICollection)<.+>/i, score: 9 },
+      {
+        pattern:
+          /\b(List|Dictionary|ArrayList|HashSet|Queue|Stack|IEnumerable|ICollection)<.+>/i,
+        score: 9,
+      },
       { pattern: /\basync\s+Task/i, score: 9 },
       { pattern: /\bTask<\w+>/i, score: 9 },
       { pattern: /\bawait\s+\w+\..*\(/i, score: 5 },
@@ -640,7 +652,10 @@ function detectProgrammingLanguage(codeSnippet) {
       { pattern: /\basync\s+function/i, score: 8 },
       { pattern: /\basync\s+\w+\s*\(/i, score: 7 },
       { pattern: /\basync\s+\(/i, score: 7 },
-      { pattern: /\b(npm|node|nodejs|react|vue|angular|express|webpack)\b/i, score: 9 },
+      {
+        pattern: /\b(npm|node|nodejs|react|vue|angular|express|webpack)\b/i,
+        score: 9,
+      },
       { pattern: /\.then\(/i, score: 7 },
       { pattern: /\.catch\(/i, score: 7 },
       { pattern: /\.finally\(/i, score: 7 },
@@ -648,7 +663,10 @@ function detectProgrammingLanguage(codeSnippet) {
       { pattern: /require\(['"]/i, score: 9 },
       { pattern: /import\s+.*from\s+['"]/i, score: 9 },
       { pattern: /export\s+(default|const|function|class)/i, score: 9 },
-      { pattern: /\bsetTimeout|setInterval|clearTimeout|clearInterval\b/i, score: 8 },
+      {
+        pattern: /\bsetTimeout|setInterval|clearTimeout|clearInterval\b/i,
+        score: 8,
+      },
       { pattern: /addEventListener|removeEventListener/i, score: 8 },
       { pattern: /\bJSON\.(parse|stringify)\(/i, score: 8 },
       { pattern: /===|!==|typeof\s+\w+\s+===\s+["']\w+["']/i, score: 6 },
@@ -765,10 +783,14 @@ function detectProgrammingLanguage(codeSnippet) {
   // Always return something that highlights - never plain text
   // clike highlights common programming keywords (if, for, while, return, etc.)
   if (maxScore === 0) {
-    console.log("[CodePreview] No patterns matched, defaulting to clike for basic highlighting");
+    console.log(
+      "[CodePreview] No patterns matched, defaulting to clike for basic highlighting"
+    );
     return "clike";
   } else if (maxScore < 5) {
-    console.log(`[CodePreview] Low confidence (${maxScore}), using best guess: ${detectedLanguage}`);
+    console.log(
+      `[CodePreview] Low confidence (${maxScore}), using best guess: ${detectedLanguage}`
+    );
     return detectedLanguage;
   }
 
