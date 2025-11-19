@@ -56,8 +56,9 @@ if (searchResults.length === 0) {
 
 console.log(`[CodePreview] Processing ${searchResults.length} search results`);
 
-// Track processed URLs to avoid duplicates
+// Track processed URLs and content to avoid duplicates
 const processedUrls = new Set();
+const processedContent = new Set();
 
 for (const result of searchResults) {
   try {
@@ -65,7 +66,9 @@ for (const result of searchResults) {
     if (linkElement && isCodeURL(linkElement.href)) {
       // Skip if already processed
       if (processedUrls.has(linkElement.href)) {
-        console.log(`[CodePreview] Skipping duplicate: ${linkElement.href}`);
+        console.log(
+          `[CodePreview] Skipping duplicate URL: ${linkElement.href}`
+        );
         continue;
       }
       processedUrls.add(linkElement.href);
@@ -111,18 +114,24 @@ for (const result of searchResults) {
         }
 
         // Final fallback: Use chrome.scripting API to fetch in a new context
-        console.log(
-          `[CodePreview] All proxies failed, trying chrome.scripting API fallback`
-        );
-        try {
-          const response = await fetchViaScripting(url);
-          if (response) {
-            console.log(`[CodePreview] chrome.scripting API succeeded!`);
-            return response;
-          }
-        } catch (e) {
+        if (document.body) {
           console.log(
-            `[CodePreview] chrome.scripting API failed: ${e.message}`
+            `[CodePreview] All proxies failed, trying chrome.scripting API fallback`
+          );
+          try {
+            const response = await fetchViaScripting(url);
+            if (response) {
+              console.log(`[CodePreview] chrome.scripting API succeeded!`);
+              return response;
+            }
+          } catch (e) {
+            console.log(
+              `[CodePreview] chrome.scripting API failed: ${e.message}`
+            );
+          }
+        } else {
+          console.log(
+            `[CodePreview] Skipping iframe fallback: document.body not available`
           );
         }
 
@@ -131,6 +140,9 @@ for (const result of searchResults) {
 
       tryFetch(linkElement.href)
         .then((response) => {
+          if (!response) {
+            throw new Error("No response received");
+          }
           console.log(
             `[CodePreview] Fetch response status: ${response.status}`
           );
@@ -148,6 +160,17 @@ for (const result of searchResults) {
             codeSnippet = replaceHtmlCharacters(codeSnippet);
             codeSnippet = codeSnippet.replace(/;/g, ";\n");
             codeSnippet = removeDuplicateLineBreaks(codeSnippet);
+
+            // Check if we've already displayed this exact content
+            const contentHash = codeSnippet.trim().substring(0, 200);
+            if (processedContent.has(contentHash)) {
+              console.log(
+                `[CodePreview] Skipping duplicate content from ${linkElement.href}`
+              );
+              return;
+            }
+            processedContent.add(contentHash);
+
             const answerUrl = getAnswerUrl(html);
             // Create a <link> element for the Prism theme CSS
             var language = detectProgrammingLanguage(codeSnippet);
@@ -162,6 +185,17 @@ for (const result of searchResults) {
             preElement.style.whiteSpace = "pre-wrap";
             preElement.style.wordBreak = "break-all";
             preElement.style.paddingTop = "30px";
+
+            // Limit to 15 lines by default
+            const lines = codeSnippet.split("\n");
+            const maxLines = 15;
+            let isCollapsed = lines.length > maxLines;
+
+            if (isCollapsed) {
+              preElement.innerText = lines.slice(0, maxLines).join("\n");
+              preElement.style.maxHeight = "none";
+            }
+
             codeElement.appendChild(preElement);
 
             const button = document.createElement("button");
@@ -172,20 +206,52 @@ for (const result of searchResults) {
             previewContainer.appendChild(codeElement);
 
             button.addEventListener("click", () => {
-              copyToClipboard(codeSnippet);
+              copyToClipboard(codeSnippet, button);
             });
 
+            // Add Extend button if content is collapsed
+            if (isCollapsed) {
+              const extendButton = document.createElement("button");
+              extendButton.innerText = "Extend";
+              extendButton.classList.add("extend-button");
+              extendButton.style.position = "absolute";
+              extendButton.style.bottom = "10px";
+              extendButton.style.right = "10px";
+              extendButton.style.padding = "5px 15px";
+              extendButton.style.cursor = "pointer";
+              extendButton.style.zIndex = "10";
+
+              // Make preview container relative for absolute positioning
+              previewContainer.style.position = "relative";
+
+              extendButton.addEventListener("click", () => {
+                if (
+                  preElement.innerText === lines.slice(0, maxLines).join("\n")
+                ) {
+                  // Expand
+                  preElement.innerText = codeSnippet;
+                  extendButton.innerText = "Collapse";
+                  highlightElement(previewContainer);
+                } else {
+                  // Collapse
+                  preElement.innerText = lines.slice(0, maxLines).join("\n");
+                  extendButton.innerText = "Extend";
+                  highlightElement(previewContainer);
+                }
+              });
+
+              previewContainer.appendChild(extendButton);
+            }
+
             if (answerUrl) {
-              const goToAnswerButton = document.createElement("btn");
+              const goToAnswerButton = document.createElement("a");
               goToAnswerButton.classList.add("go-to-answer-button");
               goToAnswerButton.classList.add("text-center");
               goToAnswerButton.href = answerUrl;
               goToAnswerButton.target = "_blank";
+              goToAnswerButton.rel = "noopener noreferrer";
               goToAnswerButton.textContent = "Go to Answer";
               previewContainer.appendChild(goToAnswerButton);
-              goToAnswerButton.addEventListener("click", () => {
-                location.href = answerUrl;
-              });
             }
           } else {
             console.log(`[CodePreview] No code found for ${linkElement.href}`);
@@ -426,7 +492,7 @@ function extractTopAnswer(responseHTML) {
     {
       domain: "github.com",
       regex:
-        /<div\s+class="repository-content[^"]*">\s*<div\s+class="Box-comment[^"]*">\s*<div\s+class="comment-body[^"]*">\s*([\s\S]*?)<\/div>/i,
+        /<div\s+class="comment-body[^"]*"[^>]*>([\s\S]*?)<\/div>|<div\s+class="markdown-body[^"]*"[^>]*>([\s\S]*?)<\/div>|<article[^>]*class="markdown-body[^"]*"[^>]*>([\s\S]*?)<\/article>/i,
     },
     {
       domain: "stackexchange.com",
@@ -477,12 +543,18 @@ function extractTopAnswer(responseHTML) {
       console.log(`[CodePreview] Trying to extract from ${domain}`);
       const matches = responseHTML.match(regex);
 
-      if (matches && matches[1]) {
-        console.log(
-          `[CodePreview] Successfully extracted answer from ${domain}, length: ${matches[1].length}`
-        );
-        topAnswer = matches[1];
-        break;
+      if (matches) {
+        // Find the first non-undefined capture group (for regex with multiple alternatives)
+        for (let i = 1; i < matches.length; i++) {
+          if (matches[i]) {
+            console.log(
+              `[CodePreview] Successfully extracted answer from ${domain}, length: ${matches[i].length}`
+            );
+            topAnswer = matches[i];
+            break;
+          }
+        }
+        if (topAnswer) break;
       } else {
         console.log(`[CodePreview] No match found for ${domain}`);
       }
@@ -674,6 +746,23 @@ function cleanHtmlTags(html) {
   // Remove all remaining HTML tags
   text = text.replace(/<[^>]+>/g, "");
 
+  // Decode HTML entities
+  text = text.replace(/&quot;/g, '"');
+  text = text.replace(/&amp;/g, "&");
+  text = text.replace(/&lt;/g, "<");
+  text = text.replace(/&gt;/g, ">");
+  text = text.replace(/&nbsp;/g, " ");
+  text = text.replace(/&copy;/g, "©");
+  text = text.replace(/&reg;/g, "®");
+  text = text.replace(/&ldquo;/g, '"');
+  text = text.replace(/&rdquo;/g, '"');
+  text = text.replace(/&#47;/g, "/");
+  text = text.replace(/&#39;/g, "'");
+  text = text.replace(/&apos;/g, "'");
+  text = text.replace(/&hellip;/g, "...");
+  text = text.replace(/&mdash;/g, "—");
+  text = text.replace(/&ndash;/g, "–");
+
   // Clean up whitespace
   text = text.replace(/\n\s*\n\s*\n/g, "\n\n"); // Max 2 line breaks
   text = text.trim();
@@ -681,25 +770,53 @@ function cleanHtmlTags(html) {
   return text;
 }
 
-function copyToClipboard(text) {
+function copyToClipboard(text, button) {
   const textarea = document.createElement("textarea");
   textarea.value = text;
   document.body.appendChild(textarea);
   textarea.select();
   document.execCommand("copy");
   document.body.removeChild(textarea);
+
+  // Add checkmark animation
+  if (button) {
+    const originalText = button.innerText;
+    const originalWidth = button.offsetWidth + "px";
+    button.style.width = originalWidth;
+    button.style.textAlign = "center";
+    button.innerText = "✓";
+    button.classList.add("copied");
+    setTimeout(() => {
+      button.innerText = originalText;
+      button.style.width = "";
+      button.style.textAlign = "";
+      button.classList.remove("copied");
+    }, 1500);
+  }
 }
 
 // Chrome scripting API fallback - creates isolated context
 async function fetchViaScripting(url) {
   return new Promise((resolve, reject) => {
+    // Check if document.body exists
+    if (!document.body) {
+      reject(new Error("document.body not available"));
+      return;
+    }
+
     // Create a hidden iframe to fetch the content
     const iframe = document.createElement("iframe");
     iframe.style.display = "none";
     iframe.sandbox = "allow-same-origin allow-scripts";
 
     let timeoutId = setTimeout(() => {
-      document.body.removeChild(iframe);
+      try {
+        if (iframe.parentNode) {
+          document.body.removeChild(iframe);
+        }
+      } catch (e) {
+        console.log("[CodePreview] Error removing iframe:", e);
+      }
       reject(new Error("Timeout"));
     }, 10000);
 
@@ -710,7 +827,9 @@ async function fetchViaScripting(url) {
         const html = iframeDoc.documentElement.outerHTML;
 
         clearTimeout(timeoutId);
-        document.body.removeChild(iframe);
+        if (iframe.parentNode) {
+          document.body.removeChild(iframe);
+        }
 
         // Return a Response-like object
         resolve({
@@ -723,18 +842,45 @@ async function fetchViaScripting(url) {
         });
       } catch (e) {
         clearTimeout(timeoutId);
-        document.body.removeChild(iframe);
+        if (iframe.parentNode) {
+          document.body.removeChild(iframe);
+        }
         reject(e);
       }
     };
 
     iframe.onerror = () => {
       clearTimeout(timeoutId);
-      document.body.removeChild(iframe);
+      try {
+        if (iframe.parentNode) {
+          document.body.removeChild(iframe);
+        }
+      } catch (e) {
+        console.log("[CodePreview] Error removing iframe:", e);
+      }
       reject(new Error("iframe load failed"));
     };
 
-    document.body.appendChild(iframe);
-    iframe.src = url;
+    try {
+      document.body.appendChild(iframe);
+    } catch (e) {
+      clearTimeout(timeoutId);
+      reject(new Error(`Failed to append iframe: ${e.message}`));
+      return;
+    }
+
+    try {
+      iframe.src = url;
+    } catch (e) {
+      clearTimeout(timeoutId);
+      try {
+        if (iframe.parentNode) {
+          document.body.removeChild(iframe);
+        }
+      } catch (removeError) {
+        console.log("[CodePreview] Error removing iframe:", removeError);
+      }
+      reject(new Error(`Failed to set iframe src: ${e.message}`));
+    }
   });
 }
