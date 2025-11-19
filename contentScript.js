@@ -77,6 +77,15 @@ for (const result of searchResults) {
       previewContainer.classList.add("code-preview-container");
       previewContainer.classList.add("code-snippet-container");
 
+      // Show loading animation
+      const loadingDiv = document.createElement("div");
+      loadingDiv.classList.add("code-preview-loading");
+      loadingDiv.innerHTML = `
+        <div class="loading-spinner"></div>
+        <span>Code preview loading...</span>
+      `;
+      previewContainer.appendChild(loadingDiv);
+
       // Try direct fetch first, then fallback to proxy
       const tryFetch = async (url) => {
         // Try direct fetch first
@@ -113,26 +122,16 @@ for (const result of searchResults) {
           }
         }
 
-        // Final fallback: Use chrome.scripting API to fetch in a new context
-        if (document.body) {
-          console.log(
-            `[CodePreview] All proxies failed, trying chrome.scripting API fallback`
-          );
-          try {
-            const response = await fetchViaScripting(url);
-            if (response) {
-              console.log(`[CodePreview] chrome.scripting API succeeded!`);
-              return response;
-            }
-          } catch (e) {
-            console.log(
-              `[CodePreview] chrome.scripting API failed: ${e.message}`
-            );
+        // Last resort: try chrome.scripting API
+        console.log(`[CodePreview] All proxies failed, trying chrome.scripting API`);
+        try {
+          const scriptResponse = await fetchViaScripting(url);
+          if (scriptResponse) {
+            console.log(`[CodePreview] chrome.scripting API succeeded!`);
+            return scriptResponse;
           }
-        } else {
-          console.log(
-            `[CodePreview] Skipping iframe fallback: document.body not available`
-          );
+        } catch (scriptError) {
+          console.log(`[CodePreview] chrome.scripting API failed: ${scriptError.message}`);
         }
 
         throw new Error("All fetch methods failed");
@@ -167,9 +166,19 @@ for (const result of searchResults) {
               console.log(
                 `[CodePreview] Skipping duplicate content from ${linkElement.href}`
               );
+              // Remove the preview container since it's a duplicate
+              if (previewContainer.parentNode) {
+                previewContainer.parentNode.removeChild(previewContainer);
+              }
               return;
             }
             processedContent.add(contentHash);
+
+            // Remove loading animation
+            const loadingDiv = previewContainer.querySelector(".code-preview-loading");
+            if (loadingDiv) {
+              loadingDiv.remove();
+            }
 
             const answerUrl = getAnswerUrl(html);
             // Create a <link> element for the Prism theme CSS
@@ -288,16 +297,21 @@ for (const result of searchResults) {
             highlightElement(previewContainer);
           } else {
             console.log(`[CodePreview] No code found for ${linkElement.href}`);
-            previewContainer.textContent = "Code Preview not available.";
+            // Don't show container if there's no code
+            if (previewContainer.parentNode) {
+              previewContainer.parentNode.removeChild(previewContainer);
+            }
           }
         })
         .catch((error) => {
           console.error(`[CodePreview] Fetch error:`, error);
-          previewContainer.textContent =
-            "Failed to load preview (proxy error).";
+          // Don't show container on error
+          if (previewContainer.parentNode) {
+            previewContainer.parentNode.removeChild(previewContainer);
+          }
         });
 
-      // Intelligently append preview to handle columnar layouts
+      // Append preview container immediately to show loading state
       appendPreviewContainer(result, previewContainer);
     }
   } catch (exception) {
@@ -1091,6 +1105,36 @@ function cleanHtmlTags(html) {
   return text;
 }
 
+// Safer chrome.scripting fallback - uses executeScript instead of iframe
+async function fetchViaScripting(url) {
+  return new Promise((resolve, reject) => {
+    // Send message to background script to fetch content
+    chrome.runtime.sendMessage(
+      { action: "fetchUrl", url: url },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        
+        if (response && response.success) {
+          // Return a Response-like object
+          resolve({
+            ok: true,
+            status: 200,
+            text: async () => response.html,
+            clone: function () {
+              return this;
+            },
+          });
+        } else {
+          reject(new Error(response?.error || "Unknown error"));
+        }
+      }
+    );
+  });
+}
+
 function copyToClipboard(text, button) {
   const textarea = document.createElement("textarea");
   textarea.value = text;
@@ -1116,92 +1160,4 @@ function copyToClipboard(text, button) {
   }
 }
 
-// Chrome scripting API fallback - creates isolated context
-async function fetchViaScripting(url) {
-  return new Promise((resolve, reject) => {
-    // Check if document.body exists
-    if (!document.body) {
-      reject(new Error("document.body not available"));
-      return;
-    }
 
-    // Create a hidden iframe to fetch the content
-    const iframe = document.createElement("iframe");
-    iframe.style.display = "none";
-    iframe.sandbox = "allow-same-origin allow-scripts";
-
-    let timeoutId = setTimeout(() => {
-      try {
-        if (iframe.parentNode) {
-          document.body.removeChild(iframe);
-        }
-      } catch (e) {
-        console.log("[CodePreview] Error removing iframe:", e);
-      }
-      reject(new Error("Timeout"));
-    }, 10000);
-
-    iframe.onload = async () => {
-      try {
-        const iframeDoc =
-          iframe.contentDocument || iframe.contentWindow.document;
-        const html = iframeDoc.documentElement.outerHTML;
-
-        clearTimeout(timeoutId);
-        if (iframe.parentNode) {
-          document.body.removeChild(iframe);
-        }
-
-        // Return a Response-like object
-        resolve({
-          ok: true,
-          status: 200,
-          text: async () => html,
-          clone: function () {
-            return this;
-          },
-        });
-      } catch (e) {
-        clearTimeout(timeoutId);
-        if (iframe.parentNode) {
-          document.body.removeChild(iframe);
-        }
-        reject(e);
-      }
-    };
-
-    iframe.onerror = () => {
-      clearTimeout(timeoutId);
-      try {
-        if (iframe.parentNode) {
-          document.body.removeChild(iframe);
-        }
-      } catch (e) {
-        console.log("[CodePreview] Error removing iframe:", e);
-      }
-      reject(new Error("iframe load failed"));
-    };
-
-    try {
-      document.body.appendChild(iframe);
-    } catch (e) {
-      clearTimeout(timeoutId);
-      reject(new Error(`Failed to append iframe: ${e.message}`));
-      return;
-    }
-
-    try {
-      iframe.src = url;
-    } catch (e) {
-      clearTimeout(timeoutId);
-      try {
-        if (iframe.parentNode) {
-          document.body.removeChild(iframe);
-        }
-      } catch (removeError) {
-        console.log("[CodePreview] Error removing iframe:", removeError);
-      }
-      reject(new Error(`Failed to set iframe src: ${e.message}`));
-    }
-  });
-}
