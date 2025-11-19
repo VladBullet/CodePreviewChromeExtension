@@ -35,6 +35,8 @@
         "lib/he.js",
         "lib/prism.js",
         "lib/prism.css",
+        "lib/prism_dark.js",
+        "lib/prism_dark.css",
         "lib/site.css",
         "contentScript.js",
         "popup.js",

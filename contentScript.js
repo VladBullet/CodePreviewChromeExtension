@@ -1,4 +1,5 @@
 let isExtensionEnabled = true;
+let forceDarkTheme = false;
 
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
   if (message.action === "getToggleState") {
@@ -15,6 +16,12 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     } else {
       hideCodePreviews();
     }
+  } else if (message.action === "setTheme") {
+    forceDarkTheme = message.forceDark;
+    // Persist theme preference
+    chrome.storage.local.set({ forceDarkTheme: forceDarkTheme });
+    // Reload page to apply new theme
+    window.location.reload();
   }
 });
 
@@ -39,47 +46,52 @@ function showCodePreviews() {
 // Initialize extension - load state and process search results
 function initializeExtension() {
   // Load initial state from storage
-  chrome.storage.local.get(["extensionEnabled"], function (result) {
-    isExtensionEnabled =
-      result.extensionEnabled !== undefined ? result.extensionEnabled : true;
-    console.log(`[CodePreview] Extension enabled: ${isExtensionEnabled}`);
+  chrome.storage.local.get(
+    ["extensionEnabled", "forceDarkTheme"],
+    function (result) {
+      isExtensionEnabled =
+        result.extensionEnabled !== undefined ? result.extensionEnabled : true;
+      forceDarkTheme = result.forceDarkTheme || false;
+      console.log(`[CodePreview] Extension enabled: ${isExtensionEnabled}`);
+      console.log(`[CodePreview] Force dark theme: ${forceDarkTheme}`);
 
-    if (!isExtensionEnabled) {
-      console.log("[CodePreview] Extension is disabled, skipping processing");
-      return;
-    }
+      if (!isExtensionEnabled) {
+        console.log("[CodePreview] Extension is disabled, skipping processing");
+        return;
+      }
 
-    // Extension is enabled, process search results
-    // Try multiple selectors for different Google layouts
-    let searchResults = document.querySelectorAll(".g");
-    console.log(
-      `[CodePreview] Found ${searchResults.length} search results with .g selector`
-    );
-
-    if (searchResults.length === 0) {
-      // Try alternative selector
-      searchResults = document.querySelectorAll("div[data-hveid]");
+      // Extension is enabled, process search results
+      // Try multiple selectors for different Google layouts
+      let searchResults = document.querySelectorAll(".g");
       console.log(
-        `[CodePreview] Trying alternative selector: found ${searchResults.length} results`
+        `[CodePreview] Found ${searchResults.length} search results with .g selector`
       );
-    }
 
-    if (searchResults.length === 0) {
-      // Try another alternative
-      searchResults = document.querySelectorAll(".MjjYud");
+      if (searchResults.length === 0) {
+        // Try alternative selector
+        searchResults = document.querySelectorAll("div[data-hveid]");
+        console.log(
+          `[CodePreview] Trying alternative selector: found ${searchResults.length} results`
+        );
+      }
+
+      if (searchResults.length === 0) {
+        // Try another alternative
+        searchResults = document.querySelectorAll(".MjjYud");
+        console.log(
+          `[CodePreview] Trying .MjjYud selector: found ${searchResults.length} results`
+        );
+      }
+
       console.log(
-        `[CodePreview] Trying .MjjYud selector: found ${searchResults.length} results`
+        `[CodePreview] Processing ${searchResults.length} search results`
       );
-    }
 
-    console.log(
-      `[CodePreview] Processing ${searchResults.length} search results`
-    );
-
-    if (searchResults.length > 0) {
-      processSearchResults(searchResults);
+      if (searchResults.length > 0) {
+        processSearchResults(searchResults);
+      }
     }
-  });
+  );
 }
 
 function processSearchResults(searchResults) {
@@ -606,13 +618,25 @@ function highlightElement(codeElement) {
   console.log("[CodePreview] highlightElement called");
   console.log("[CodePreview] codeElement:", codeElement);
 
+  // Determine theme: if forceDarkTheme is true, use dark; otherwise use light
+  // (we're not auto-detecting anymore, user controls it with the toggle)
+  const isDarkMode = forceDarkTheme;
+  const prismCssFile = isDarkMode ? "lib/prism_dark.css" : "lib/prism.css";
+  const prismJsFile = isDarkMode ? "lib/prism_dark.js" : "lib/prism.js";
+
+  console.log(
+    `[CodePreview] Force dark theme: ${forceDarkTheme}, Using: ${
+      isDarkMode ? "dark" : "light"
+    }`
+  );
+
   // Check if Prism CSS is already loaded
-  if (!document.querySelector('link[href*="prism.css"]')) {
+  if (!document.querySelector('link[href*="prism"]')) {
     const linkElement = document.createElement("link");
     linkElement.rel = "stylesheet";
-    linkElement.href = chrome.runtime.getURL("lib/prism.css");
+    linkElement.href = chrome.runtime.getURL(prismCssFile);
     document.head.appendChild(linkElement);
-    console.log("[CodePreview] Prism CSS loaded");
+    console.log(`[CodePreview] Prism CSS loaded: ${prismCssFile}`);
   } else {
     console.log("[CodePreview] Prism CSS already loaded");
   }
@@ -631,7 +655,7 @@ function highlightElement(codeElement) {
     // Load Prism script if not already loaded
     console.log("[CodePreview] Loading Prism script");
     const prismScript = document.createElement("script");
-    prismScript.src = chrome.runtime.getURL("lib/prism.js");
+    prismScript.src = chrome.runtime.getURL(prismJsFile);
     prismScript.onload = () => {
       // Prism is loaded, continue with highlighting
       console.log("[CodePreview] Prism script loaded, highlighting now");

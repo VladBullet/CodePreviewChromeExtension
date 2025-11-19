@@ -131,7 +131,6 @@
   border-radius: 15px !important;
   padding: 10px !important;
   margin: 10px 0 !important;
-  background-color: #fff !important;
   position: relative !important;
 }
 
@@ -142,79 +141,4 @@
 
 .code-preview-container div.code-toolbar {
   position: static !important;
-}
-
-/* Override any dark theme styles - force light background for code */
-.code-preview-container pre[class*="language-"],
-.code-preview-container code[class*="language-"] {
-  background: #f5f2f0 !important;
-  color: #000 !important;
-  text-shadow: 0 1px white !important;
-  color-scheme: light !important;
-}
-
-/* Ensure the pre element has proper background */
-.code-preview-container pre[class*="language-"] {
-  background: #f5f2f0 !important;
-  padding: 1em !important;
-  margin: 0.5em 0 !important;
-  overflow: auto !important;
-  border-radius: 0.3em !important;
-}
-
-/* Force syntax highlighting colors to show properly in dark mode */
-.code-preview-container .token.comment,
-.code-preview-container .token.prolog,
-.code-preview-container .token.doctype,
-.code-preview-container .token.cdata {
-  color: slategray !important;
-}
-
-.code-preview-container .token.punctuation {
-  color: #999 !important;
-}
-
-.code-preview-container .token.property,
-.code-preview-container .token.tag,
-.code-preview-container .token.boolean,
-.code-preview-container .token.number,
-.code-preview-container .token.constant,
-.code-preview-container .token.symbol,
-.code-preview-container .token.deleted {
-  color: #905 !important;
-}
-
-.code-preview-container .token.selector,
-.code-preview-container .token.attr-name,
-.code-preview-container .token.string,
-.code-preview-container .token.char,
-.code-preview-container .token.builtin,
-.code-preview-container .token.inserted {
-  color: #690 !important;
-}
-
-.code-preview-container .token.operator,
-.code-preview-container .token.entity,
-.code-preview-container .token.url,
-.code-preview-container .language-css .token.string,
-.code-preview-container .style .token.string {
-  color: #9a6e3a !important;
-  background: hsla(0, 0%, 100%, .5) !important;
-}
-
-.code-preview-container .token.atrule,
-.code-preview-container .token.attr-value,
-.code-preview-container .token.keyword {
-  color: #07a !important;
-}
-
-.code-preview-container .token.function,
-.code-preview-container .token.class-name {
-  color: #DD4A68 !important;
-}
-
-.code-preview-container .token.regex,
-.code-preview-container .token.important,
-.code-preview-container .token.variable {
-  color: #e90 !important;
 }
