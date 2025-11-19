@@ -34,18 +34,24 @@ function showCodePreviews() {
 // --------------------------------------------------------------------
 // Try multiple selectors for different Google layouts
 let searchResults = document.querySelectorAll(".g");
-console.log(`[CodePreview] Found ${searchResults.length} search results with .g selector`);
+console.log(
+  `[CodePreview] Found ${searchResults.length} search results with .g selector`
+);
 
 if (searchResults.length === 0) {
   // Try alternative selector
-  searchResults = document.querySelectorAll('div[data-hveid]');
-  console.log(`[CodePreview] Trying alternative selector: found ${searchResults.length} results`);
+  searchResults = document.querySelectorAll("div[data-hveid]");
+  console.log(
+    `[CodePreview] Trying alternative selector: found ${searchResults.length} results`
+  );
 }
 
 if (searchResults.length === 0) {
   // Try another alternative
-  searchResults = document.querySelectorAll('.MjjYud');
-  console.log(`[CodePreview] Trying .MjjYud selector: found ${searchResults.length} results`);
+  searchResults = document.querySelectorAll(".MjjYud");
+  console.log(
+    `[CodePreview] Trying .MjjYud selector: found ${searchResults.length} results`
+  );
 }
 
 console.log(`[CodePreview] Processing ${searchResults.length} search results`);
@@ -67,28 +73,30 @@ for (const result of searchResults) {
       const previewContainer = document.createElement("div");
       previewContainer.classList.add("code-preview-container");
       previewContainer.classList.add("code-snippet-container");
-      
+
       // Try direct fetch first, then fallback to proxy
       const tryFetch = async (url) => {
         // Try direct fetch first
         try {
           console.log(`[CodePreview] Trying direct fetch: ${url}`);
-          const response = await fetch(url, { mode: 'cors' });
+          const response = await fetch(url, { mode: "cors" });
           if (response.ok) {
             console.log(`[CodePreview] Direct fetch succeeded!`);
             return response;
           }
         } catch (e) {
-          console.log(`[CodePreview] Direct fetch failed (expected for CORS): ${e.message}`);
+          console.log(
+            `[CodePreview] Direct fetch failed (expected for CORS): ${e.message}`
+          );
         }
-        
+
         // Try multiple proxy options
         const proxies = [
           "https://corsproxyanywhere.onrender.com/",
           "https://api.allorigins.win/raw?url=",
-          "https://cors-anywhere.herokuapp.com/"
+          "https://cors-anywhere.herokuapp.com/",
         ];
-        
+
         for (const proxyUrl of proxies) {
           try {
             console.log(`[CodePreview] Trying proxy: ${proxyUrl}`);
@@ -101,9 +109,11 @@ for (const result of searchResults) {
             console.log(`[CodePreview] Proxy ${proxyUrl} failed: ${e.message}`);
           }
         }
-        
+
         // Final fallback: Use chrome.scripting API to fetch in a new context
-        console.log(`[CodePreview] All proxies failed, trying chrome.scripting API fallback`);
+        console.log(
+          `[CodePreview] All proxies failed, trying chrome.scripting API fallback`
+        );
         try {
           const response = await fetchViaScripting(url);
           if (response) {
@@ -111,15 +121,19 @@ for (const result of searchResults) {
             return response;
           }
         } catch (e) {
-          console.log(`[CodePreview] chrome.scripting API failed: ${e.message}`);
+          console.log(
+            `[CodePreview] chrome.scripting API failed: ${e.message}`
+          );
         }
-        
-        throw new Error('All fetch methods failed');
+
+        throw new Error("All fetch methods failed");
       };
-      
+
       tryFetch(linkElement.href)
         .then((response) => {
-          console.log(`[CodePreview] Fetch response status: ${response.status}`);
+          console.log(
+            `[CodePreview] Fetch response status: ${response.status}`
+          );
           return response.clone().text();
         })
         .then((html) => {
@@ -180,7 +194,8 @@ for (const result of searchResults) {
         })
         .catch((error) => {
           console.error(`[CodePreview] Fetch error:`, error);
-          previewContainer.textContent = "Failed to load preview (proxy error).";
+          previewContainer.textContent =
+            "Failed to load preview (proxy error).";
         });
       result.appendChild(previewContainer);
       highlightElement(previewContainer);
@@ -210,9 +225,9 @@ function isCodeURL(url) {
     "atlassian",
     "git",
     "linux",
-    "debian", 
+    "debian",
     "ubuntu",
-    "tutorial"
+    "tutorial",
   ];
   const codePatterns = [
     /\/blog\//i,
@@ -228,7 +243,7 @@ function isCodeURL(url) {
     /docs\.docker\.com/i,
     /atlassian\.com/i,
     /git-scm\.com/i,
-    /tutorialspoint\.com/i
+    /tutorialspoint\.com/i,
   ];
 
   for (const keyword of codeKeywords) {
@@ -256,11 +271,11 @@ function extractCodeSnippetFromHTML(html) {
   if (preMatches && preMatches.length > 0) {
     console.log(`[CodePreview] Found ${preMatches.length} <pre> tags`);
     // Filter out very short snippets (likely not code)
-    const validPre = preMatches.filter(match => {
-      const cleaned = match.replace(/<[^>]*>/g, '').trim();
+    const validPre = preMatches.filter((match) => {
+      const cleaned = match.replace(/<[^>]*>/g, "").trim();
       return cleaned.length > 20; // At least 20 chars
     });
-    
+
     if (validPre.length > 0) {
       codeSnippet = validPre
         .slice(0, 3) // Take first 3 code blocks
@@ -425,13 +440,11 @@ function extractTopAnswer(responseHTML) {
     },
     {
       domain: "learn.microsoft.com",
-      regex:
-        /<code\s+class="lang-[^"]*"[^>]*>([\s\S]*?)<\/code>/i,
+      regex: /<code\s+class="lang-[^"]*"[^>]*>([\s\S]*?)<\/code>/i,
     },
     {
       domain: "docs.microsoft.com",
-      regex:
-        /<code\s+class="lang-[^"]*"[^>]*>([\s\S]*?)<\/code>/i,
+      regex: /<code\s+class="lang-[^"]*"[^>]*>([\s\S]*?)<\/code>/i,
     },
     {
       domain: "c-sharpcorner.com",
@@ -465,7 +478,9 @@ function extractTopAnswer(responseHTML) {
       const matches = responseHTML.match(regex);
 
       if (matches && matches[1]) {
-        console.log(`[CodePreview] Successfully extracted answer from ${domain}, length: ${matches[1].length}`);
+        console.log(
+          `[CodePreview] Successfully extracted answer from ${domain}, length: ${matches[1].length}`
+        );
         topAnswer = matches[1];
         break;
       } else {
@@ -565,7 +580,7 @@ function getAnswerUrl(html) {
   if (learnMicrosoftAnswerMatch) {
     return learnMicrosoftAnswerMatch[0];
   }
-  
+
   // Example for Docs Microsoft
   const docsMicrosoftAnswerMatch = html.match(
     /https?:\/\/docs\.microsoft\.com\/[^"'\s<>]+/
@@ -622,7 +637,7 @@ function removeDuplicateLineBreaks(text) {
 
 function cleanHtmlTags(html) {
   let text = html;
-  
+
   // Convert common HTML tags to readable format
   text = text.replace(/<p[^>]*>/gi, "\n");
   text = text.replace(/<\/p>/gi, "\n");
@@ -637,29 +652,32 @@ function cleanHtmlTags(html) {
   text = text.replace(/<\/ul>/gi, "\n");
   text = text.replace(/<ol[^>]*>/gi, "\n");
   text = text.replace(/<\/ol>/gi, "\n");
-  
+
   // Convert links to readable format: [text](url)
-  text = text.replace(/<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, "$2 ($1)");
-  
+  text = text.replace(
+    /<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi,
+    "$2 ($1)"
+  );
+
   // Convert code tags
   text = text.replace(/<code[^>]*>/gi, "`");
   text = text.replace(/<\/code>/gi, "`");
   text = text.replace(/<pre[^>]*>/gi, "\n```\n");
   text = text.replace(/<\/pre>/gi, "\n```\n");
-  
+
   // Convert formatting tags
   text = text.replace(/<strong[^>]*>|<b[^>]*>/gi, "**");
   text = text.replace(/<\/strong>|<\/b>/gi, "**");
   text = text.replace(/<em[^>]*>|<i[^>]*>/gi, "*");
   text = text.replace(/<\/em>|<\/i>/gi, "*");
-  
+
   // Remove all remaining HTML tags
   text = text.replace(/<[^>]+>/g, "");
-  
+
   // Clean up whitespace
   text = text.replace(/\n\s*\n\s*\n/g, "\n\n"); // Max 2 line breaks
   text = text.trim();
-  
+
   return text;
 }
 
@@ -676,29 +694,32 @@ function copyToClipboard(text) {
 async function fetchViaScripting(url) {
   return new Promise((resolve, reject) => {
     // Create a hidden iframe to fetch the content
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.sandbox = 'allow-same-origin allow-scripts';
-    
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
+    iframe.sandbox = "allow-same-origin allow-scripts";
+
     let timeoutId = setTimeout(() => {
       document.body.removeChild(iframe);
-      reject(new Error('Timeout'));
+      reject(new Error("Timeout"));
     }, 10000);
-    
+
     iframe.onload = async () => {
       try {
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        const iframeDoc =
+          iframe.contentDocument || iframe.contentWindow.document;
         const html = iframeDoc.documentElement.outerHTML;
-        
+
         clearTimeout(timeoutId);
         document.body.removeChild(iframe);
-        
+
         // Return a Response-like object
         resolve({
           ok: true,
           status: 200,
           text: async () => html,
-          clone: function() { return this; }
+          clone: function () {
+            return this;
+          },
         });
       } catch (e) {
         clearTimeout(timeoutId);
@@ -706,13 +727,13 @@ async function fetchViaScripting(url) {
         reject(e);
       }
     };
-    
+
     iframe.onerror = () => {
       clearTimeout(timeoutId);
       document.body.removeChild(iframe);
-      reject(new Error('iframe load failed'));
+      reject(new Error("iframe load failed"));
     };
-    
+
     document.body.appendChild(iframe);
     iframe.src = url;
   });
