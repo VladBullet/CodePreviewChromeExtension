@@ -9,7 +9,7 @@ chrome.action.onClicked.addListener((tab) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "fetchUrl") {
     const url = request.url;
-    
+
     fetch(url)
       .then((response) => {
         if (response.ok) {
@@ -24,7 +24,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch((error) => {
         sendResponse({ success: false, error: error.message });
       });
-    
+
     // Return true to indicate async response
     return true;
   }

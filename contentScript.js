@@ -123,7 +123,9 @@ for (const result of searchResults) {
         }
 
         // Last resort: try chrome.scripting API
-        console.log(`[CodePreview] All proxies failed, trying chrome.scripting API`);
+        console.log(
+          `[CodePreview] All proxies failed, trying chrome.scripting API`
+        );
         try {
           const scriptResponse = await fetchViaScripting(url);
           if (scriptResponse) {
@@ -131,7 +133,9 @@ for (const result of searchResults) {
             return scriptResponse;
           }
         } catch (scriptError) {
-          console.log(`[CodePreview] chrome.scripting API failed: ${scriptError.message}`);
+          console.log(
+            `[CodePreview] chrome.scripting API failed: ${scriptError.message}`
+          );
         }
 
         throw new Error("All fetch methods failed");
@@ -175,7 +179,9 @@ for (const result of searchResults) {
             processedContent.add(contentHash);
 
             // Remove loading animation
-            const loadingDiv = previewContainer.querySelector(".code-preview-loading");
+            const loadingDiv = previewContainer.querySelector(
+              ".code-preview-loading"
+            );
             if (loadingDiv) {
               loadingDiv.remove();
             }
@@ -1109,29 +1115,26 @@ function cleanHtmlTags(html) {
 async function fetchViaScripting(url) {
   return new Promise((resolve, reject) => {
     // Send message to background script to fetch content
-    chrome.runtime.sendMessage(
-      { action: "fetchUrl", url: url },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        
-        if (response && response.success) {
-          // Return a Response-like object
-          resolve({
-            ok: true,
-            status: 200,
-            text: async () => response.html,
-            clone: function () {
-              return this;
-            },
-          });
-        } else {
-          reject(new Error(response?.error || "Unknown error"));
-        }
+    chrome.runtime.sendMessage({ action: "fetchUrl", url: url }, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
       }
-    );
+
+      if (response && response.success) {
+        // Return a Response-like object
+        resolve({
+          ok: true,
+          status: 200,
+          text: async () => response.html,
+          clone: function () {
+            return this;
+          },
+        });
+      } else {
+        reject(new Error(response?.error || "Unknown error"));
+      }
+    });
   });
 }
 
@@ -1159,5 +1162,3 @@ function copyToClipboard(text, button) {
     }, 1500);
   }
 }
-
-
