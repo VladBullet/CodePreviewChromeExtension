@@ -19,12 +19,12 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
 });
 
 function hideCodePreviews() {
-  const codePreviews = document.getElementsByClassName(
-    "code-preview-container"
-  );
-  for (const preview of codePreviews) {
-    preview.style.display = "none";
-  }
+  const codePreviews = document.querySelectorAll(".code-preview-container");
+  codePreviews.forEach((preview) => {
+    if (preview.parentNode) {
+      preview.parentNode.removeChild(preview);
+    }
+  });
 }
 
 function showCodePreviews() {
