@@ -174,17 +174,24 @@ for (const result of searchResults) {
             const answerUrl = getAnswerUrl(html);
             // Create a <link> element for the Prism theme CSS
             var language = detectProgrammingLanguage(codeSnippet);
+            console.log(`[CodePreview] Detected language: ${language}`);
+            console.log(
+              `[CodePreview] Code snippet preview:`,
+              codeSnippet.substring(0, 200)
+            );
+            console.log(`[CodePreview] Full snippet length: ${codeSnippet.length} chars`);
             // previewContainer.style.border = "1px solid #ccc";
             // previewContainer.style.borderRadius = "15px";
             // previewContainer.style.padding = "5px";
 
-            const codeElement = document.createElement("code");
             const preElement = document.createElement("pre");
-            preElement.innerText = codeSnippet;
-            preElement.classList.add("language-" + language);
-            preElement.style.whiteSpace = "pre-wrap";
-            preElement.style.wordBreak = "break-all";
-            preElement.style.paddingTop = "30px";
+            const codeElement = document.createElement("code");
+
+            // The code element needs the language class for Prism
+            // Always ensure we have a valid language for highlighting
+            const finalLanguage = language || "clike";
+            codeElement.classList.add("language-" + finalLanguage);
+            console.log(`[CodePreview] Added class: language-${finalLanguage}`);
 
             // Limit to 15 lines by default
             const lines = codeSnippet.split("\n");
@@ -192,18 +199,31 @@ for (const result of searchResults) {
             let isCollapsed = lines.length > maxLines;
 
             if (isCollapsed) {
-              preElement.innerText = lines.slice(0, maxLines).join("\n");
+              codeElement.textContent = lines.slice(0, maxLines).join("\n");
+            } else {
+              codeElement.textContent = codeSnippet;
+            }
+
+            // Style the pre element
+            preElement.style.whiteSpace = "pre-wrap";
+            preElement.style.wordBreak = "break-word";
+            preElement.style.overflowWrap = "break-word";
+            preElement.style.paddingTop = "30px";
+            preElement.style.maxWidth = "100%";
+            preElement.style.overflow = "auto";
+            if (isCollapsed) {
               preElement.style.maxHeight = "none";
             }
 
-            codeElement.appendChild(preElement);
+            // Correct structure: pre > code
+            preElement.appendChild(codeElement);
 
             const button = document.createElement("button");
             button.innerText = "Copy to Clipboard";
             button.classList.add("copy-button");
             previewContainer.appendChild(button);
 
-            previewContainer.appendChild(codeElement);
+            previewContainer.appendChild(preElement);
 
             button.addEventListener("click", () => {
               copyToClipboard(codeSnippet, button);
@@ -225,18 +245,22 @@ for (const result of searchResults) {
               previewContainer.style.position = "relative";
 
               extendButton.addEventListener("click", () => {
-                if (
-                  preElement.innerText === lines.slice(0, maxLines).join("\n")
-                ) {
+                const currentCode = codeElement.textContent;
+                const collapsedCode = lines.slice(0, maxLines).join("\n");
+                
+                if (currentCode === collapsedCode || extendButton.innerText === "Extend") {
                   // Expand
-                  preElement.innerText = codeSnippet;
+                  codeElement.textContent = codeSnippet;
                   extendButton.innerText = "Collapse";
-                  highlightElement(previewContainer);
                 } else {
                   // Collapse
-                  preElement.innerText = lines.slice(0, maxLines).join("\n");
+                  codeElement.textContent = collapsedCode;
                   extendButton.innerText = "Extend";
-                  highlightElement(previewContainer);
+                }
+                
+                // Re-highlight after changing content
+                if (typeof Prism !== "undefined") {
+                  Prism.highlightElement(codeElement);
                 }
               });
 
@@ -253,6 +277,10 @@ for (const result of searchResults) {
               goToAnswerButton.textContent = "Go to Answer";
               previewContainer.appendChild(goToAnswerButton);
             }
+            
+            // Apply syntax highlighting after content is added
+            console.log("[CodePreview] About to highlight initial content");
+            highlightElement(previewContainer);
           } else {
             console.log(`[CodePreview] No code found for ${linkElement.href}`);
             previewContainer.textContent = "Code Preview not available.";
@@ -263,11 +291,110 @@ for (const result of searchResults) {
           previewContainer.textContent =
             "Failed to load preview (proxy error).";
         });
-      result.appendChild(previewContainer);
-      highlightElement(previewContainer);
+
+      // Intelligently append preview to handle columnar layouts
+      appendPreviewContainer(result, previewContainer);
     }
   } catch (exception) {
     console.error(exception);
+  }
+}
+
+/**
+ * Appends preview container intelligently to handle both regular and columnar layouts
+ * @param {HTMLElement} result - The search result element
+ * @param {HTMLElement} previewContainer - The preview container to append
+ */
+function appendPreviewContainer(result, previewContainer) {
+  // Check if this is part of a columnar layout (like images grid)
+  // Look for parent container that might contain multiple columns
+  let targetContainer = result;
+  let insertPosition = result;
+
+  // Check if parent has class indicating columnar layout
+  const parent = result.parentElement;
+  const grandParent = parent?.parentElement;
+
+  // Detect columnar layouts by checking for specific Google classes
+  // Images section uses: Lv2Cle, cakeVe, or similar container classes
+  const isColumnarLayout =
+    parent?.classList.contains("cakeVe") ||
+    parent?.classList.contains("Wn3aEc") ||
+    grandParent?.classList.contains("Lv2Cle") ||
+    grandParent?.classList.contains("Wn3aEc") ||
+    (parent?.style.display === "flex" &&
+      parent.querySelectorAll("[data-hveid]").length > 1);
+
+  if (isColumnarLayout) {
+    // Find the container that spans full width
+    // Typically this is 2-3 levels up from individual column items
+    let fullWidthContainer = result;
+    let current = result.parentElement;
+    let depth = 0;
+
+    // Traverse up to find the container that spans the search result width
+    while (current && depth < 5) {
+      // Check if this container spans the full width
+      if (
+        current.classList.contains("Lv2Cle") ||
+        current.classList.contains("Wn3aEc") ||
+        current.getAttribute("jsmodel") === "Wn3aEc"
+      ) {
+        fullWidthContainer = current;
+        break;
+      }
+      current = current.parentElement;
+      depth++;
+    }
+
+    // Create a wrapper div to ensure full width
+    const wrapperDiv = document.createElement("div");
+    wrapperDiv.style.cssText =
+      "width: 100%; clear: both; display: block; margin-top: 10px;";
+    wrapperDiv.appendChild(previewContainer);
+
+    // Find the grid/column container (typically has id="iur" or similar)
+    let gridContainer = fullWidthContainer.querySelector(
+      '#iur, [id^="iur"], .cakeVe'
+    );
+
+    if (gridContainer) {
+      // Insert inside the grid container, at the end (before "show more" button)
+      // The "show more" button is typically a sibling after the grid
+      gridContainer.appendChild(wrapperDiv);
+    } else {
+      // Fallback: insert at the end of fullWidthContainer
+      // but before any buttons or pagination elements
+      const buttons = fullWidthContainer.querySelectorAll(
+        'a[class*="more"], button, [role="button"]'
+      );
+      let insertBeforeElement = null;
+
+      // Find the first button/link that might be "show more"
+      for (const btn of buttons) {
+        const text = btn.textContent.toLowerCase();
+        if (
+          text.includes("more") ||
+          text.includes("show") ||
+          text.includes("all")
+        ) {
+          insertBeforeElement = btn.parentElement;
+          break;
+        }
+      }
+
+      if (
+        insertBeforeElement &&
+        fullWidthContainer.contains(insertBeforeElement)
+      ) {
+        fullWidthContainer.insertBefore(wrapperDiv, insertBeforeElement);
+      } else {
+        fullWidthContainer.appendChild(wrapperDiv);
+      }
+    }
+  } else {
+    // Regular layout - append directly to result
+    result.appendChild(previewContainer);
   }
 }
 
@@ -385,20 +512,50 @@ function extractCodeSnippetFromHTML(html) {
 }
 
 function highlightElement(codeElement) {
-  const linkElement = document.createElement("link");
-  linkElement.rel = "stylesheet";
-  linkElement.href = chrome.runtime.getURL("lib/prism.css");
-  document.head.appendChild(linkElement);
+  console.log("[CodePreview] highlightElement called");
+  console.log("[CodePreview] codeElement:", codeElement);
 
-  const prismScript = document.createElement("script");
-  prismScript.src = chrome.runtime.getURL("lib/prism.js");
-  prismScript.onload = () => {
-    // Prism is loaded, continue with highlighting
-    // Apply syntax highlighting
+  // Check if Prism CSS is already loaded
+  if (!document.querySelector('link[href*="prism.css"]')) {
+    const linkElement = document.createElement("link");
+    linkElement.rel = "stylesheet";
+    linkElement.href = chrome.runtime.getURL("lib/prism.css");
+    document.head.appendChild(linkElement);
+    console.log("[CodePreview] Prism CSS loaded");
+  } else {
+    console.log("[CodePreview] Prism CSS already loaded");
+  }
+
+  // Check if Prism is already loaded
+  if (typeof Prism !== "undefined") {
+    // Prism is already loaded, just highlight
+    console.log("[CodePreview] Prism is available, highlighting now");
+    console.log(
+      "[CodePreview] Code elements found:",
+      codeElement.querySelectorAll('code[class*="language-"]').length
+    );
     Prism.highlightAllUnder(codeElement);
-
-    // Move the highlighted code element to the preview container
-  };
+    console.log("[CodePreview] Prism.highlightAllUnder executed");
+  } else {
+    // Load Prism script if not already loaded
+    console.log("[CodePreview] Loading Prism script");
+    const prismScript = document.createElement("script");
+    prismScript.src = chrome.runtime.getURL("lib/prism.js");
+    prismScript.onload = () => {
+      // Prism is loaded, continue with highlighting
+      console.log("[CodePreview] Prism script loaded, highlighting now");
+      console.log(
+        "[CodePreview] Code elements found:",
+        codeElement.querySelectorAll('code[class*="language-"]').length
+      );
+      Prism.highlightAllUnder(codeElement);
+      console.log("[CodePreview] Prism.highlightAllUnder executed");
+    };
+    prismScript.onerror = (error) => {
+      console.error("[CodePreview] Failed to load Prism script:", error);
+    };
+    document.head.appendChild(prismScript);
+  }
 }
 // function detectProgrammingLanguage1(codeSnippet) {
 //   // Define regular expressions for language detection
@@ -427,56 +584,198 @@ function highlightElement(codeElement) {
 //   return "javascript";
 // }
 function detectProgrammingLanguage(codeSnippet) {
-  // Define regular expressions for language detection
-  const languageRegexMap = [
-    {
-      language: "javascript",
-      regex:
-        /(?:\b|['"\s])(?:javascript|js|node\.?js|console\.log|function|var|let|const|if|for|while)\b/gi,
-    },
-    {
-      language: "java",
-      regex:
-        /(?:\b|['"\s])(?:java|jdk|System\.out\.println|public|class|void|static|import|new)\b/gi,
-    },
-    {
-      language: "python",
-      regex:
-        /(?:\b|['"\s])(?:python|py|print|def|if|for|while|import|from|class|self)\b/gi,
-    },
-    {
-      language: "html",
-      regex:
-        /(?:\b|['"\s])(?:html|html5|htm|<!DOCTYPE html>|<html>|<head>|<body>|<div>|<p>|<a>|<img>)\b/gi,
-    },
-    {
-      language: "csharp",
-      regex:
-        /(?:\b|['"\s])(?:c#|\.net|csharp|Console\.WriteLine|public|class|void|static|using|namespace)\b/gi,
-    },
-    {
-      language: "c",
-      regex:
-        /(?:\b|['"\s])(?:c|c-lang|clang|#include|printf|scanf|int|float|char|for|while)\b/gi,
-    },
-    {
-      language: "cpp",
-      regex:
-        /(?:\b|['"\s])(?:c\+\+|cpp|#include|cout|cin|class|public|private|void|using|namespace)\b/gi,
-    },
-    // Add more language regex patterns as needed
-  ];
+  const snippet = codeSnippet.toLowerCase();
+  let scores = {};
 
-  // Match against the regular expressions
-  for (const { language, regex } of languageRegexMap) {
-    regex.lastIndex = 0; // Reset the lastIndex property
-    if (regex.test(codeSnippet)) {
-      return language;
+  // Score-based detection system - each pattern adds to language score
+  const patterns = {
+    csharp: [
+      { pattern: /\busing\s+system/i, score: 10 },
+      { pattern: /\busing\s+\w+(\.\w+)*;/i, score: 7 },
+      { pattern: /\bnamespace\s+\w+/i, score: 10 },
+      { pattern: /\bconsole\.writeline\(/i, score: 10 },
+      { pattern: /\bconsole\.write\(/i, score: 9 },
+      { pattern: /\bpublic\s+record\s+\w+/i, score: 10 },
+      { pattern: /\brecord\s+\w+\s*\(/i, score: 10 },
+      {
+        pattern: /\b(public|private|protected|internal)\s+(static\s+)?(class|interface|enum|struct|record)\s+\w+/i,
+        score: 10,
+      },
+      {
+        pattern: /\b(public|private|protected|internal)\s+(static\s+)?(void|string|int|bool|double|float|decimal|long|short|byte|char|object|Task)\s+\w+\s*\(/i,
+        score: 9,
+      },
+      {
+        pattern: /\b(string|int|bool|double|float|decimal|var|long|short|byte|char|object)\s+\w+\s*=/i,
+        score: 6,
+      },
+      { pattern: /\bnew\s*\([^)]*\);/i, score: 8 },
+      { pattern: /\b(List|Dictionary|ArrayList|HashSet|Queue|Stack|IEnumerable|ICollection)<.+>/i, score: 9 },
+      { pattern: /\basync\s+Task/i, score: 9 },
+      { pattern: /\bTask<\w+>/i, score: 9 },
+      { pattern: /\bawait\s+\w+\..*\(/i, score: 5 },
+      { pattern: /\.net|c#|csharp/i, score: 10 },
+      { pattern: /\b(linq|entity|wpf|asp\.net|mvc)\b/i, score: 8 },
+      { pattern: /\{\s*get\s*;/i, score: 8 },
+      { pattern: /\{\s*set\s*;/i, score: 8 },
+      { pattern: /\bget\s*=>/i, score: 7 },
+      { pattern: /\binit\s*;/i, score: 8 },
+      { pattern: /\[HttpGet\]|\[HttpPost\]|\[Route\]/i, score: 10 },
+      { pattern: /\bMain\s*\(\s*\)/i, score: 8 },
+      { pattern: /\bstatic\s+void\s+Main/i, score: 10 },
+    ],
+    javascript: [
+      { pattern: /\bconsole\.log\(/i, score: 10 },
+      { pattern: /\bconsole\.(warn|error|info|debug)\(/i, score: 9 },
+      { pattern: /\bconst\s+\w+\s*=/i, score: 9 },
+      { pattern: /\blet\s+\w+\s*=/i, score: 9 },
+      { pattern: /\bvar\s+\w+\s*=/i, score: 7 },
+      { pattern: /\bfunction\s+\w+\s*\(/i, score: 8 },
+      { pattern: /\bfunction\s*\(/i, score: 7 },
+      { pattern: /\(\s*\)\s*=>/i, score: 8 },
+      { pattern: /\w+\s*=>\s*\{/i, score: 7 },
+      { pattern: /\w+\s*=>\s*\w+/i, score: 6 },
+      { pattern: /\b(document|window)\./i, score: 10 },
+      { pattern: /\bjquery|\$\(/i, score: 9 },
+      { pattern: /\basync\s+function/i, score: 8 },
+      { pattern: /\basync\s+\w+\s*\(/i, score: 7 },
+      { pattern: /\basync\s+\(/i, score: 7 },
+      { pattern: /\b(npm|node|nodejs|react|vue|angular|express|webpack)\b/i, score: 9 },
+      { pattern: /\.then\(/i, score: 7 },
+      { pattern: /\.catch\(/i, score: 7 },
+      { pattern: /\.finally\(/i, score: 7 },
+      { pattern: /\bnew\s+Promise\(/i, score: 9 },
+      { pattern: /require\(['"]/i, score: 9 },
+      { pattern: /import\s+.*from\s+['"]/i, score: 9 },
+      { pattern: /export\s+(default|const|function|class)/i, score: 9 },
+      { pattern: /\bsetTimeout|setInterval|clearTimeout|clearInterval\b/i, score: 8 },
+      { pattern: /addEventListener|removeEventListener/i, score: 8 },
+      { pattern: /\bJSON\.(parse|stringify)\(/i, score: 8 },
+      { pattern: /===|!==|typeof\s+\w+\s+===\s+["']\w+["']/i, score: 6 },
+    ],
+    python: [
+      { pattern: /\bdef\s+\w+\s*\(/i, score: 10 },
+      { pattern: /\bimport\s+\w+/i, score: 8 },
+      { pattern: /\bfrom\s+\w+\s+import/i, score: 8 },
+      { pattern: /\bprint\s*\(/i, score: 8 },
+      { pattern: /\b(if|elif|else)\s+.*:/i, score: 6 },
+      { pattern: /\bfor\s+\w+\s+in\s+/i, score: 7 },
+      { pattern: /\bwhile\s+.*:/i, score: 5 },
+      { pattern: /\bclass\s+\w+(\(.*\))?:/i, score: 8 },
+      { pattern: /\bself\./i, score: 8 },
+      { pattern: /^\s*#.*$/m, score: 3 },
+      { pattern: /\b(django|flask|pandas|numpy)\b/i, score: 8 },
+    ],
+    java: [
+      { pattern: /\bpublic\s+(static\s+)?class\s+\w+/i, score: 10 },
+      { pattern: /\bpublic\s+static\s+void\s+main\s*\(/i, score: 10 },
+      { pattern: /\bsystem\.out\.println\(/i, score: 10 },
+      {
+        pattern: /\bprivate\s+(static\s+)?(int|string|void|boolean)\b/i,
+        score: 7,
+      },
+      { pattern: /\bimport\s+java\./i, score: 10 },
+      { pattern: /\bnew\s+\w+\s*\(/i, score: 4 },
+      { pattern: /\b(arraylist|hashmap|string)\s*</i, score: 6 },
+      { pattern: /\b@override\b/i, score: 8 },
+      { pattern: /\bextends\s+\w+/i, score: 6 },
+      { pattern: /\bimplements\s+\w+/i, score: 6 },
+    ],
+    cpp: [
+      { pattern: /\b#include\s*<\w+>/i, score: 10 },
+      { pattern: /\bstd::cout\s*<</i, score: 10 },
+      { pattern: /\bstd::cin\s*>>/i, score: 10 },
+      { pattern: /\busing\s+namespace\s+std/i, score: 10 },
+      { pattern: /\bclass\s+\w+\s*\{/i, score: 6 },
+      { pattern: /\bpublic:|private:|protected:/i, score: 7 },
+      { pattern: /\bvirtual\s+\w+/i, score: 7 },
+      { pattern: /\btemplate\s*</i, score: 8 },
+      { pattern: /\bstd::(string|vector|map)/i, score: 7 },
+    ],
+    c: [
+      { pattern: /\b#include\s*<(stdio|stdlib|string|math)\.h>/i, score: 10 },
+      { pattern: /\bprintf\s*\(/i, score: 9 },
+      { pattern: /\bscanf\s*\(/i, score: 9 },
+      { pattern: /\bmalloc\s*\(/i, score: 8 },
+      { pattern: /\bfree\s*\(/i, score: 7 },
+      { pattern: /\bstruct\s+\w+\s*\{/i, score: 7 },
+      { pattern: /\bmain\s*\(\s*(void|int\s+argc)/i, score: 6 },
+    ],
+    html: [
+      {
+        pattern: /<(!DOCTYPE|html|head|body|div|span|p|a|img|script|style)\b/i,
+        score: 10,
+      },
+      { pattern: /<\/\w+>/i, score: 8 },
+      { pattern: /\bclass\s*=\s*["']/i, score: 5 },
+      { pattern: /\bid\s*=\s*["']/i, score: 5 },
+      { pattern: /<\w+[^>]*>/i, score: 4 },
+    ],
+    css: [
+      { pattern: /\{[^}]*:\s*[^;]+;/i, score: 10 },
+      { pattern: /\.([\w-]+)\s*\{/i, score: 8 },
+      { pattern: /#([\w-]+)\s*\{/i, score: 7 },
+      { pattern: /\b(color|background|margin|padding|font):/i, score: 6 },
+      { pattern: /@media|@keyframes|@import/i, score: 8 },
+    ],
+    sql: [
+      { pattern: /\bselect\s+.*\bfrom\b/i, score: 10 },
+      { pattern: /\binsert\s+into\b/i, score: 10 },
+      { pattern: /\bupdate\s+\w+\s+set\b/i, score: 10 },
+      { pattern: /\bdelete\s+from\b/i, score: 10 },
+      { pattern: /\bwhere\s+\w+\s*=/i, score: 7 },
+      { pattern: /\b(inner|left|right|outer)\s+join\b/i, score: 8 },
+      { pattern: /\bcreate\s+(table|database|index)\b/i, score: 9 },
+    ],
+    json: [
+      { pattern: /^\s*\{[\s\S]*\}\s*$/i, score: 10 },
+      { pattern: /"\w+"\s*:\s*["\[\{]/i, score: 8 },
+      { pattern: /^\s*\[[\s\S]*\]\s*$/i, score: 7 },
+    ],
+    xml: [
+      { pattern: /<\?xml/i, score: 10 },
+      { pattern: /<\w+[^>]*>[\s\S]*<\/\w+>/i, score: 7 },
+      { pattern: /<\w+[^>]*\/>/i, score: 6 },
+    ],
+  };
+
+  // Calculate scores for each language
+  for (const [language, languagePatterns] of Object.entries(patterns)) {
+    scores[language] = 0;
+    for (const { pattern, score } of languagePatterns) {
+      if (pattern.test(codeSnippet)) {
+        scores[language] += score;
+      }
     }
   }
 
-  // If no specific language is detected, assume it's plaintext or unknown
-  return "plaintext";
+  console.log("[CodePreview] Language detection scores:", scores);
+
+  // Find the language with highest score
+  let detectedLanguage = "clike"; // default to C-like for generic highlighting
+  let maxScore = 0;
+
+  for (const [language, score] of Object.entries(scores)) {
+    if (score > maxScore) {
+      maxScore = score;
+      detectedLanguage = language;
+    }
+  }
+
+  // Always return something that highlights - never plain text
+  // clike highlights common programming keywords (if, for, while, return, etc.)
+  if (maxScore === 0) {
+    console.log("[CodePreview] No patterns matched, defaulting to clike for basic highlighting");
+    return "clike";
+  } else if (maxScore < 5) {
+    console.log(`[CodePreview] Low confidence (${maxScore}), using best guess: ${detectedLanguage}`);
+    return detectedLanguage;
+  }
+
+  console.log(
+    `[CodePreview] Detected ${detectedLanguage} with score ${maxScore}`
+  );
+  return detectedLanguage;
 }
 
 function extractTopAnswer(responseHTML) {
