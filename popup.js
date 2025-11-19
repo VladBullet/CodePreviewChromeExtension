@@ -2,8 +2,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const toggleButton = document.getElementById("toggleButton");
 
   // Load initial state from storage
-  chrome.storage.local.get(['extensionEnabled'], function(result) {
-    toggleButton.checked = result.extensionEnabled !== undefined ? result.extensionEnabled : true;
+  chrome.storage.local.get(["extensionEnabled"], function (result) {
+    toggleButton.checked =
+      result.extensionEnabled !== undefined ? result.extensionEnabled : true;
   });
 
   // Add event listener to handle button toggle

@@ -7,7 +7,7 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     isExtensionEnabled = message.enabled;
     // Persist state
     chrome.storage.local.set({ extensionEnabled: isExtensionEnabled });
-    
+
     if (isExtensionEnabled) {
       showCodePreviews();
       // Reload the page to process search results
@@ -39,15 +39,16 @@ function showCodePreviews() {
 // Initialize extension - load state and process search results
 function initializeExtension() {
   // Load initial state from storage
-  chrome.storage.local.get(['extensionEnabled'], function(result) {
-    isExtensionEnabled = result.extensionEnabled !== undefined ? result.extensionEnabled : true;
+  chrome.storage.local.get(["extensionEnabled"], function (result) {
+    isExtensionEnabled =
+      result.extensionEnabled !== undefined ? result.extensionEnabled : true;
     console.log(`[CodePreview] Extension enabled: ${isExtensionEnabled}`);
-    
+
     if (!isExtensionEnabled) {
-      console.log('[CodePreview] Extension is disabled, skipping processing');
+      console.log("[CodePreview] Extension is disabled, skipping processing");
       return;
     }
-    
+
     // Extension is enabled, process search results
     // Try multiple selectors for different Google layouts
     let searchResults = document.querySelectorAll(".g");
@@ -71,8 +72,10 @@ function initializeExtension() {
       );
     }
 
-    console.log(`[CodePreview] Processing ${searchResults.length} search results`);
-    
+    console.log(
+      `[CodePreview] Processing ${searchResults.length} search results`
+    );
+
     if (searchResults.length > 0) {
       processSearchResults(searchResults);
     }
@@ -80,274 +83,280 @@ function initializeExtension() {
 }
 
 function processSearchResults(searchResults) {
-// Track processed URLs and content to avoid duplicates
-const processedUrls = new Set();
-const processedContent = new Set();
+  // Track processed URLs and content to avoid duplicates
+  const processedUrls = new Set();
+  const processedContent = new Set();
 
-for (const result of searchResults) {
-  try {
-    const linkElement = result.querySelector('a[href^="http"]');
-    if (linkElement && isCodeURL(linkElement.href)) {
-      // Skip if already processed
-      if (processedUrls.has(linkElement.href)) {
-        console.log(
-          `[CodePreview] Skipping duplicate URL: ${linkElement.href}`
-        );
-        continue;
-      }
-      processedUrls.add(linkElement.href);
-      console.log(`[CodePreview] Processing code URL: ${linkElement.href}`);
-      const previewContainer = document.createElement("div");
-      previewContainer.classList.add("code-preview-container");
-      previewContainer.classList.add("code-snippet-container");
+  for (const result of searchResults) {
+    try {
+      const linkElement = result.querySelector('a[href^="http"]');
+      if (linkElement && isCodeURL(linkElement.href)) {
+        // Skip if already processed
+        if (processedUrls.has(linkElement.href)) {
+          console.log(
+            `[CodePreview] Skipping duplicate URL: ${linkElement.href}`
+          );
+          continue;
+        }
+        processedUrls.add(linkElement.href);
+        console.log(`[CodePreview] Processing code URL: ${linkElement.href}`);
+        const previewContainer = document.createElement("div");
+        previewContainer.classList.add("code-preview-container");
+        previewContainer.classList.add("code-snippet-container");
 
-      // Show loading animation
-      const loadingDiv = document.createElement("div");
-      loadingDiv.classList.add("code-preview-loading");
-      loadingDiv.innerHTML = `
+        // Show loading animation
+        const loadingDiv = document.createElement("div");
+        loadingDiv.classList.add("code-preview-loading");
+        loadingDiv.innerHTML = `
         <div class="loading-spinner"></div>
         <span>Code preview loading...</span>
       `;
-      previewContainer.appendChild(loadingDiv);
+        previewContainer.appendChild(loadingDiv);
 
-      // Try direct fetch first, then fallback to proxy
-      const tryFetch = async (url) => {
-        // Try direct fetch first
-        try {
-          console.log(`[CodePreview] Trying direct fetch: ${url}`);
-          const response = await fetch(url, { mode: "cors" });
-          if (response.ok) {
-            console.log(`[CodePreview] Direct fetch succeeded!`);
-            return response;
-          }
-        } catch (e) {
-          console.log(
-            `[CodePreview] Direct fetch failed (expected for CORS): ${e.message}`
-          );
-        }
-
-        // Try multiple proxy options
-        const proxies = [
-          "https://corsproxyanywhere.onrender.com/",
-          "https://api.allorigins.win/raw?url=",
-          "https://cors-anywhere.herokuapp.com/",
-        ];
-
-        for (const proxyUrl of proxies) {
+        // Try direct fetch first, then fallback to proxy
+        const tryFetch = async (url) => {
+          // Try direct fetch first
           try {
-            console.log(`[CodePreview] Trying proxy: ${proxyUrl}`);
-            const response = await fetch(proxyUrl + encodeURIComponent(url));
+            console.log(`[CodePreview] Trying direct fetch: ${url}`);
+            const response = await fetch(url, { mode: "cors" });
             if (response.ok) {
-              console.log(`[CodePreview] Proxy ${proxyUrl} succeeded!`);
+              console.log(`[CodePreview] Direct fetch succeeded!`);
               return response;
             }
           } catch (e) {
-            console.log(`[CodePreview] Proxy ${proxyUrl} failed: ${e.message}`);
+            console.log(
+              `[CodePreview] Direct fetch failed (expected for CORS): ${e.message}`
+            );
           }
-        }
 
-        // Last resort: try chrome.scripting API
-        console.log(
-          `[CodePreview] All proxies failed, trying chrome.scripting API`
-        );
-        try {
-          const scriptResponse = await fetchViaScripting(url);
-          if (scriptResponse) {
-            console.log(`[CodePreview] chrome.scripting API succeeded!`);
-            return scriptResponse;
-          }
-        } catch (scriptError) {
-          console.log(
-            `[CodePreview] chrome.scripting API failed: ${scriptError.message}`
-          );
-        }
+          // Try multiple proxy options
+          const proxies = [
+            "https://corsproxyanywhere.onrender.com/",
+            "https://api.allorigins.win/raw?url=",
+            "https://cors-anywhere.herokuapp.com/",
+          ];
 
-        throw new Error("All fetch methods failed");
-      };
-
-      tryFetch(linkElement.href)
-        .then((response) => {
-          if (!response) {
-            throw new Error("No response received");
-          }
-          console.log(
-            `[CodePreview] Fetch response status: ${response.status}`
-          );
-          return response.clone().text();
-        })
-        .then((html) => {
-          console.log(`[CodePreview] HTML received, length: ${html.length}`);
-
-          let codeSnippet = extractTopAnswer(html);
-          console.log(`[CodePreview] Top answer found: ${!!codeSnippet}`);
-          if (!codeSnippet) codeSnippet = extractCodeSnippetFromHTML(html);
-          console.log(`[CodePreview] Code snippet found: ${!!codeSnippet}`);
-          if (codeSnippet) {
-            codeSnippet = cleanHtmlTags(codeSnippet);
-            codeSnippet = replaceHtmlCharacters(codeSnippet);
-            codeSnippet = codeSnippet.replace(/;/g, ";\n");
-            codeSnippet = removeDuplicateLineBreaks(codeSnippet);
-
-            // Check if we've already displayed this exact content
-            const contentHash = codeSnippet.trim().substring(0, 200);
-            if (processedContent.has(contentHash)) {
+          for (const proxyUrl of proxies) {
+            try {
+              console.log(`[CodePreview] Trying proxy: ${proxyUrl}`);
+              const response = await fetch(proxyUrl + encodeURIComponent(url));
+              if (response.ok) {
+                console.log(`[CodePreview] Proxy ${proxyUrl} succeeded!`);
+                return response;
+              }
+            } catch (e) {
               console.log(
-                `[CodePreview] Skipping duplicate content from ${linkElement.href}`
+                `[CodePreview] Proxy ${proxyUrl} failed: ${e.message}`
               );
-              // Remove the preview container since it's a duplicate
+            }
+          }
+
+          // Last resort: try chrome.scripting API
+          console.log(
+            `[CodePreview] All proxies failed, trying chrome.scripting API`
+          );
+          try {
+            const scriptResponse = await fetchViaScripting(url);
+            if (scriptResponse) {
+              console.log(`[CodePreview] chrome.scripting API succeeded!`);
+              return scriptResponse;
+            }
+          } catch (scriptError) {
+            console.log(
+              `[CodePreview] chrome.scripting API failed: ${scriptError.message}`
+            );
+          }
+
+          throw new Error("All fetch methods failed");
+        };
+
+        tryFetch(linkElement.href)
+          .then((response) => {
+            if (!response) {
+              throw new Error("No response received");
+            }
+            console.log(
+              `[CodePreview] Fetch response status: ${response.status}`
+            );
+            return response.clone().text();
+          })
+          .then((html) => {
+            console.log(`[CodePreview] HTML received, length: ${html.length}`);
+
+            let codeSnippet = extractTopAnswer(html);
+            console.log(`[CodePreview] Top answer found: ${!!codeSnippet}`);
+            if (!codeSnippet) codeSnippet = extractCodeSnippetFromHTML(html);
+            console.log(`[CodePreview] Code snippet found: ${!!codeSnippet}`);
+            if (codeSnippet) {
+              codeSnippet = cleanHtmlTags(codeSnippet);
+              codeSnippet = replaceHtmlCharacters(codeSnippet);
+              codeSnippet = codeSnippet.replace(/;/g, ";\n");
+              codeSnippet = removeDuplicateLineBreaks(codeSnippet);
+
+              // Check if we've already displayed this exact content
+              const contentHash = codeSnippet.trim().substring(0, 200);
+              if (processedContent.has(contentHash)) {
+                console.log(
+                  `[CodePreview] Skipping duplicate content from ${linkElement.href}`
+                );
+                // Remove the preview container since it's a duplicate
+                if (previewContainer.parentNode) {
+                  previewContainer.parentNode.removeChild(previewContainer);
+                }
+                return;
+              }
+              processedContent.add(contentHash);
+
+              // Remove loading animation
+              const loadingDiv = previewContainer.querySelector(
+                ".code-preview-loading"
+              );
+              if (loadingDiv) {
+                loadingDiv.remove();
+              }
+
+              const answerUrl = getAnswerUrl(html);
+              // Create a <link> element for the Prism theme CSS
+              var language = detectProgrammingLanguage(codeSnippet);
+              console.log(`[CodePreview] Detected language: ${language}`);
+              console.log(
+                `[CodePreview] Code snippet preview:`,
+                codeSnippet.substring(0, 200)
+              );
+              console.log(
+                `[CodePreview] Full snippet length: ${codeSnippet.length} chars`
+              );
+              // previewContainer.style.border = "1px solid #ccc";
+              // previewContainer.style.borderRadius = "15px";
+              // previewContainer.style.padding = "5px";
+
+              const preElement = document.createElement("pre");
+              const codeElement = document.createElement("code");
+
+              // The code element needs the language class for Prism
+              // Always ensure we have a valid language for highlighting
+              const finalLanguage = language || "clike";
+              codeElement.classList.add("language-" + finalLanguage);
+              console.log(
+                `[CodePreview] Added class: language-${finalLanguage}`
+              );
+
+              // Limit to 15 lines by default
+              const lines = codeSnippet.split("\n");
+              const maxLines = 15;
+              let isCollapsed = lines.length > maxLines;
+
+              if (isCollapsed) {
+                codeElement.textContent = lines.slice(0, maxLines).join("\n");
+              } else {
+                codeElement.textContent = codeSnippet;
+              }
+
+              // Style the pre element
+              preElement.style.whiteSpace = "pre-wrap";
+              preElement.style.wordBreak = "break-word";
+              preElement.style.overflowWrap = "break-word";
+              preElement.style.paddingTop = "30px";
+              preElement.style.maxWidth = "100%";
+              preElement.style.overflow = "auto";
+              if (isCollapsed) {
+                preElement.style.maxHeight = "none";
+              }
+
+              // Correct structure: pre > code
+              preElement.appendChild(codeElement);
+
+              const button = document.createElement("button");
+              button.innerText = "Copy to Clipboard";
+              button.classList.add("copy-button");
+              previewContainer.appendChild(button);
+
+              previewContainer.appendChild(preElement);
+
+              button.addEventListener("click", () => {
+                copyToClipboard(codeSnippet, button);
+              });
+
+              // Add Extend button if content is collapsed
+              if (isCollapsed) {
+                const extendButton = document.createElement("button");
+                extendButton.innerText = "Extend";
+                extendButton.classList.add("extend-button");
+                extendButton.style.position = "absolute";
+                extendButton.style.bottom = "10px";
+                extendButton.style.right = "10px";
+                extendButton.style.padding = "5px 15px";
+                extendButton.style.cursor = "pointer";
+                extendButton.style.zIndex = "10";
+
+                // Make preview container relative for absolute positioning
+                previewContainer.style.position = "relative";
+
+                extendButton.addEventListener("click", () => {
+                  const currentCode = codeElement.textContent;
+                  const collapsedCode = lines.slice(0, maxLines).join("\n");
+
+                  if (
+                    currentCode === collapsedCode ||
+                    extendButton.innerText === "Extend"
+                  ) {
+                    // Expand
+                    codeElement.textContent = codeSnippet;
+                    extendButton.innerText = "Collapse";
+                  } else {
+                    // Collapse
+                    codeElement.textContent = collapsedCode;
+                    extendButton.innerText = "Extend";
+                  }
+
+                  // Re-highlight after changing content
+                  if (typeof Prism !== "undefined") {
+                    Prism.highlightElement(codeElement);
+                  }
+                });
+
+                previewContainer.appendChild(extendButton);
+              }
+
+              if (answerUrl) {
+                const goToAnswerButton = document.createElement("a");
+                goToAnswerButton.classList.add("go-to-answer-button");
+                goToAnswerButton.classList.add("text-center");
+                goToAnswerButton.href = answerUrl;
+                goToAnswerButton.target = "_blank";
+                goToAnswerButton.rel = "noopener noreferrer";
+                goToAnswerButton.textContent = "Go to Answer";
+                previewContainer.appendChild(goToAnswerButton);
+              }
+
+              // Apply syntax highlighting after content is added
+              console.log("[CodePreview] About to highlight initial content");
+              highlightElement(previewContainer);
+            } else {
+              console.log(
+                `[CodePreview] No code found for ${linkElement.href}`
+              );
+              // Don't show container if there's no code
               if (previewContainer.parentNode) {
                 previewContainer.parentNode.removeChild(previewContainer);
               }
-              return;
             }
-            processedContent.add(contentHash);
-
-            // Remove loading animation
-            const loadingDiv = previewContainer.querySelector(
-              ".code-preview-loading"
-            );
-            if (loadingDiv) {
-              loadingDiv.remove();
-            }
-
-            const answerUrl = getAnswerUrl(html);
-            // Create a <link> element for the Prism theme CSS
-            var language = detectProgrammingLanguage(codeSnippet);
-            console.log(`[CodePreview] Detected language: ${language}`);
-            console.log(
-              `[CodePreview] Code snippet preview:`,
-              codeSnippet.substring(0, 200)
-            );
-            console.log(
-              `[CodePreview] Full snippet length: ${codeSnippet.length} chars`
-            );
-            // previewContainer.style.border = "1px solid #ccc";
-            // previewContainer.style.borderRadius = "15px";
-            // previewContainer.style.padding = "5px";
-
-            const preElement = document.createElement("pre");
-            const codeElement = document.createElement("code");
-
-            // The code element needs the language class for Prism
-            // Always ensure we have a valid language for highlighting
-            const finalLanguage = language || "clike";
-            codeElement.classList.add("language-" + finalLanguage);
-            console.log(`[CodePreview] Added class: language-${finalLanguage}`);
-
-            // Limit to 15 lines by default
-            const lines = codeSnippet.split("\n");
-            const maxLines = 15;
-            let isCollapsed = lines.length > maxLines;
-
-            if (isCollapsed) {
-              codeElement.textContent = lines.slice(0, maxLines).join("\n");
-            } else {
-              codeElement.textContent = codeSnippet;
-            }
-
-            // Style the pre element
-            preElement.style.whiteSpace = "pre-wrap";
-            preElement.style.wordBreak = "break-word";
-            preElement.style.overflowWrap = "break-word";
-            preElement.style.paddingTop = "30px";
-            preElement.style.maxWidth = "100%";
-            preElement.style.overflow = "auto";
-            if (isCollapsed) {
-              preElement.style.maxHeight = "none";
-            }
-
-            // Correct structure: pre > code
-            preElement.appendChild(codeElement);
-
-            const button = document.createElement("button");
-            button.innerText = "Copy to Clipboard";
-            button.classList.add("copy-button");
-            previewContainer.appendChild(button);
-
-            previewContainer.appendChild(preElement);
-
-            button.addEventListener("click", () => {
-              copyToClipboard(codeSnippet, button);
-            });
-
-            // Add Extend button if content is collapsed
-            if (isCollapsed) {
-              const extendButton = document.createElement("button");
-              extendButton.innerText = "Extend";
-              extendButton.classList.add("extend-button");
-              extendButton.style.position = "absolute";
-              extendButton.style.bottom = "10px";
-              extendButton.style.right = "10px";
-              extendButton.style.padding = "5px 15px";
-              extendButton.style.cursor = "pointer";
-              extendButton.style.zIndex = "10";
-
-              // Make preview container relative for absolute positioning
-              previewContainer.style.position = "relative";
-
-              extendButton.addEventListener("click", () => {
-                const currentCode = codeElement.textContent;
-                const collapsedCode = lines.slice(0, maxLines).join("\n");
-
-                if (
-                  currentCode === collapsedCode ||
-                  extendButton.innerText === "Extend"
-                ) {
-                  // Expand
-                  codeElement.textContent = codeSnippet;
-                  extendButton.innerText = "Collapse";
-                } else {
-                  // Collapse
-                  codeElement.textContent = collapsedCode;
-                  extendButton.innerText = "Extend";
-                }
-
-                // Re-highlight after changing content
-                if (typeof Prism !== "undefined") {
-                  Prism.highlightElement(codeElement);
-                }
-              });
-
-              previewContainer.appendChild(extendButton);
-            }
-
-            if (answerUrl) {
-              const goToAnswerButton = document.createElement("a");
-              goToAnswerButton.classList.add("go-to-answer-button");
-              goToAnswerButton.classList.add("text-center");
-              goToAnswerButton.href = answerUrl;
-              goToAnswerButton.target = "_blank";
-              goToAnswerButton.rel = "noopener noreferrer";
-              goToAnswerButton.textContent = "Go to Answer";
-              previewContainer.appendChild(goToAnswerButton);
-            }
-
-            // Apply syntax highlighting after content is added
-            console.log("[CodePreview] About to highlight initial content");
-            highlightElement(previewContainer);
-          } else {
-            console.log(`[CodePreview] No code found for ${linkElement.href}`);
-            // Don't show container if there's no code
+          })
+          .catch((error) => {
+            console.error(`[CodePreview] Fetch error:`, error);
+            // Don't show container on error
             if (previewContainer.parentNode) {
               previewContainer.parentNode.removeChild(previewContainer);
             }
-          }
-        })
-        .catch((error) => {
-          console.error(`[CodePreview] Fetch error:`, error);
-          // Don't show container on error
-          if (previewContainer.parentNode) {
-            previewContainer.parentNode.removeChild(previewContainer);
-          }
-        });
+          });
 
-      // Append preview container immediately to show loading state
-      appendPreviewContainer(result, previewContainer);
+        // Append preview container immediately to show loading state
+        appendPreviewContainer(result, previewContainer);
+      }
+    } catch (exception) {
+      console.error(exception);
     }
-  } catch (exception) {
-    console.error(exception);
   }
-}
 }
 
 // Start the extension
