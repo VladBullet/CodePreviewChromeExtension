@@ -200,7 +200,15 @@ function processSearchResults(searchResults) {
             if (!codeSnippet) codeSnippet = extractCodeSnippetFromHTML(html);
             console.log(`[CodePreview] Code snippet found: ${!!codeSnippet}`);
             if (codeSnippet) {
-              codeSnippet = cleanHtmlTags(codeSnippet);
+              // Smart detection: preserve HTML tags if they appear to be part of the code
+              const shouldPreserveHtml = containsCodeHtmlTags(codeSnippet);
+              console.log(
+                `[CodePreview] Contains code HTML tags: ${shouldPreserveHtml}`
+              );
+
+              if (!shouldPreserveHtml) {
+                codeSnippet = cleanHtmlTags(codeSnippet);
+              }
               codeSnippet = replaceHtmlCharacters(codeSnippet);
               codeSnippet = codeSnippet.replace(/;/g, ";\n");
               codeSnippet = removeDuplicateLineBreaks(codeSnippet);
@@ -1136,6 +1144,43 @@ function getAnswerUrl(html) {
 
 function removeDuplicateLineBreaks(text) {
   return text.replace(/\n+/g, "\n");
+}
+
+function containsCodeHtmlTags(snippet) {
+  // Check if the snippet contains HTML/XML tags that are likely part of the code
+  // rather than formatting tags like <p>, <pre>, <code>, <a>
+
+  // Remove formatting tags first to check the actual content
+  let contentOnly = snippet
+    .replace(/<\/?p[^>]*>/gi, "")
+    .replace(/<\/?pre[^>]*>/gi, "")
+    .replace(/<\/?code[^>]*>/gi, "")
+    .replace(/<\/?strong[^>]*>/gi, "")
+    .replace(/<\/?em[^>]*>/gi, "")
+    .replace(/<\/?b[^>]*>/gi, "")
+    .replace(/<\/?i[^>]*>/gi, "")
+    .replace(/<a[^>]*>.*?<\/a>/gi, "");
+
+  // Common HTML elements used in web development code
+  const codeHtmlPatterns = [
+    // Web development HTML tags
+    /<(div|span|input|button|form|table|tr|td|th|select|option|textarea|label|img|ul|ol|li|nav|header|footer|section|article|aside|main|figure|figcaption|video|audio|canvas|svg|iframe|script|style|link|meta|title|body|html|head)[^>]*>/i,
+    // Check for JSX/React patterns
+    /<[A-Z][a-zA-Z0-9]*[^>]*>/,
+    // Check for template literals with HTML
+    /`[^`]*<[a-z][^>]*>/i,
+    // Check for innerHTML/outerHTML assignments
+    /(innerHTML|outerHTML)\s*=/,
+    // Check for document.createElement
+    /document\.createElement\s*\(/,
+    // Check for HTML strings in quotes
+    /["']<[a-z][^>]*>.*<\/[a-z]+>["']/i,
+    // Check for template strings with tags
+    /\$\{[^}]*<[a-z]/i,
+  ];
+
+  // Test against the content without formatting tags
+  return codeHtmlPatterns.some((pattern) => pattern.test(contentOnly));
 }
 
 function cleanHtmlTags(html) {
