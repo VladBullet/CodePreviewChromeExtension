@@ -2,6 +2,14 @@ let isExtensionEnabled = true;
 let forceDarkTheme = false;
 let corsProxyUrl = null; // Will be fetched at runtime
 
+// Global tracker to prevent duplicate processing across multiple initializations
+if (!window.codePreviewProcessedUrls) {
+  window.codePreviewProcessedUrls = new Set();
+}
+if (!window.codePreviewProcessedContent) {
+  window.codePreviewProcessedContent = new Set();
+}
+
 // Function to fetch the CORS proxy URL from a remote endpoint
 async function getCorsProxyUrl() {
   // Return cached value if already fetched
@@ -11,23 +19,34 @@ async function getCorsProxyUrl() {
 
   try {
     // Fetch the proxy URL from your remote endpoint
-    // Replace this URL with your actual endpoint that returns the proxy URL
     const configUrl =
       "https://raw.githubusercontent.com/VladBullet/CodePreviewChromeExtension/master/proxy-config.json";
 
-    const response = await fetch(configUrl);
+    const response = await fetch(configUrl, {
+      cache: "no-cache",
+      headers: { Accept: "application/json" },
+    });
 
     if (response.ok) {
       const config = await response.json();
-      corsProxyUrl = config.corsProxyUrl;
-      return corsProxyUrl;
+      if (config && config.corsProxyUrl) {
+        corsProxyUrl = config.corsProxyUrl;
+        console.log(
+          "[CodePreview] Successfully loaded CORS proxy configuration"
+        );
+        return corsProxyUrl;
+      } else {
+        throw new Error("Invalid proxy configuration format");
+      }
     } else {
-      // Fallback to a default proxy
-      corsProxyUrl = "https://api.allorigins.win/raw?url=";
-      return corsProxyUrl;
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
   } catch (error) {
-    console.error("[CodePreview] Error fetching CORS proxy URL:", error);
+    console.warn(
+      "[CodePreview] Failed to fetch CORS proxy URL:",
+      error.message
+    );
+    console.log("[CodePreview] Using default proxy fallback");
     // Fallback to a default proxy
     corsProxyUrl = "https://api.allorigins.win/raw?url=";
     return corsProxyUrl;
@@ -35,26 +54,62 @@ async function getCorsProxyUrl() {
 }
 
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
-  if (message.action === "getToggleState") {
-    sendResponse({ enabled: isExtensionEnabled });
-  } else if (message.action === "setToggleState") {
-    isExtensionEnabled = message.enabled;
-    // Persist state
-    chrome.storage.local.set({ extensionEnabled: isExtensionEnabled });
-
-    if (isExtensionEnabled) {
-      showCodePreviews();
-      // Reload the page to process search results
-      window.location.reload();
-    } else {
-      hideCodePreviews();
+  try {
+    if (!message || !message.action) {
+      console.warn("[CodePreview] Received invalid message:", message);
+      return;
     }
-  } else if (message.action === "setTheme") {
-    forceDarkTheme = message.forceDark;
-    // Persist theme preference
-    chrome.storage.local.set({ forceDarkTheme: forceDarkTheme });
-    // Reload page to apply new theme
-    window.location.reload();
+
+    if (message.action === "getToggleState") {
+      sendResponse({ enabled: isExtensionEnabled });
+    } else if (message.action === "setToggleState") {
+      if (typeof message.enabled !== "boolean") {
+        console.error("[CodePreview] Invalid enabled value:", message.enabled);
+        return;
+      }
+
+      isExtensionEnabled = message.enabled;
+      // Persist state
+      chrome.storage.local.set({ extensionEnabled: isExtensionEnabled }, () => {
+        if (chrome.runtime.lastError) {
+          console.error(
+            "[CodePreview] Failed to save state:",
+            chrome.runtime.lastError
+          );
+        }
+      });
+
+      if (isExtensionEnabled) {
+        showCodePreviews();
+        // Reload the page to process search results
+        window.location.reload();
+      } else {
+        hideCodePreviews();
+      }
+    } else if (message.action === "setTheme") {
+      if (typeof message.forceDark !== "boolean") {
+        console.error(
+          "[CodePreview] Invalid forceDark value:",
+          message.forceDark
+        );
+        return;
+      }
+
+      forceDarkTheme = message.forceDark;
+      // Persist theme preference
+      chrome.storage.local.set({ forceDarkTheme: forceDarkTheme }, () => {
+        if (chrome.runtime.lastError) {
+          console.error(
+            "[CodePreview] Failed to save theme:",
+            chrome.runtime.lastError
+          );
+        }
+      });
+      // Reload page to apply new theme
+      window.location.reload();
+    }
+  } catch (error) {
+    console.error("[CodePreview] Error handling message:", error);
   }
 });
 
@@ -78,123 +133,107 @@ function showCodePreviews() {
 
 // Initialize extension - load state and process search results
 async function initializeExtension() {
-  // Fetch CORS proxy URL first
-  await getCorsProxyUrl();
+  try {
+    // Fetch CORS proxy URL first
+    await getCorsProxyUrl();
 
-  // Load initial state from storage
-  chrome.storage.local.get(
-    ["extensionEnabled", "forceDarkTheme"],
-    function (result) {
-      isExtensionEnabled =
-        result.extensionEnabled !== undefined ? result.extensionEnabled : true;
-      forceDarkTheme = result.forceDarkTheme || false;
-      console.log(`[CodePreview] Extension enabled: ${isExtensionEnabled}`);
-      console.log(`[CodePreview] Force dark theme: ${forceDarkTheme}`);
+    // Load initial state from storage
+    chrome.storage.local.get(
+      ["extensionEnabled", "forceDarkTheme"],
+      function (result) {
+        try {
+          isExtensionEnabled =
+            result.extensionEnabled !== undefined
+              ? result.extensionEnabled
+              : true;
+          forceDarkTheme = result.forceDarkTheme || false;
+          console.log(`[CodePreview] Extension enabled: ${isExtensionEnabled}`);
+          console.log(`[CodePreview] Force dark theme: ${forceDarkTheme}`);
 
-      if (!isExtensionEnabled) {
-        console.log("[CodePreview] Extension is disabled, skipping processing");
-        return;
+          if (!isExtensionEnabled) {
+            console.log(
+              "[CodePreview] Extension is disabled, skipping processing"
+            );
+            return;
+          }
+
+          // Extension is enabled, process search results
+          // Try multiple selectors for different Google layouts
+          let searchResults = document.querySelectorAll(".g");
+
+          if (searchResults.length === 0) {
+            // Try alternative selector
+            searchResults = document.querySelectorAll("div[data-hveid]");
+          }
+
+          if (searchResults.length === 0) {
+            // Try another alternative
+            searchResults = document.querySelectorAll(".MjjYud");
+          }
+
+          if (searchResults.length > 0) {
+            processSearchResults(searchResults);
+          } else {
+            console.log("[CodePreview] No search results found on page");
+          }
+        } catch (error) {
+          console.error(
+            "[CodePreview] Error processing search results:",
+            error
+          );
+        }
       }
-
-      // Extension is enabled, process search results
-      // Try multiple selectors for different Google layouts
-      let searchResults = document.querySelectorAll(".g");
-
-      if (searchResults.length === 0) {
-        // Try alternative selector
-        searchResults = document.querySelectorAll("div[data-hveid]");
-      }
-
-      if (searchResults.length === 0) {
-        // Try another alternative
-        searchResults = document.querySelectorAll(".MjjYud");
-      }
-
-      if (searchResults.length > 0) {
-        processSearchResults(searchResults);
-      }
-    }
-  );
+    );
+  } catch (error) {
+    console.error("[CodePreview] Failed to initialize extension:", error);
+  }
 }
 
 function processSearchResults(searchResults) {
-  // Track processed URLs and content to avoid duplicates
-  const processedUrls = new Set();
-  const processedContent = new Set();
+  if (!searchResults || searchResults.length === 0) {
+    console.log("[CodePreview] No search results to process");
+    return;
+  }
+
+  // Use global trackers to avoid duplicates
+  const processedUrls = window.codePreviewProcessedUrls;
+  const processedContent = window.codePreviewProcessedContent;
 
   for (const result of searchResults) {
     try {
-      const linkElement = result.querySelector('a[href^="http"]');
-      if (linkElement && isCodeURL(linkElement.href)) {
-        // Clean URL - remove Google's text fragment highlights
-        const cleanUrl = linkElement.href.split("#:~:text=")[0];
+      // Skip if this result element has already been processed
+      if (result.dataset.previewProcessed === "true") {
+        continue;
+      }
 
-        // Skip if already processed
+      const linkElement = result.querySelector('a[href^="http"]');
+      if (!linkElement || !linkElement.href) {
+        continue;
+      }
+
+      if (isCodeURL(linkElement.href)) {
+        // Clean URL - remove Google's text fragment highlights and anchors
+        const cleanUrl = linkElement.href.split("#")[0];
+
+        // SIMPLE CHECK: Skip if we've already processed this URL
         if (processedUrls.has(cleanUrl)) {
           continue;
         }
-        processedUrls.add(cleanUrl);
-        const previewContainer = document.createElement("div");
-        previewContainer.classList.add("code-preview-container");
-        previewContainer.classList.add("code-snippet-container");
 
-        // Show loading animation
-        const loadingDiv = document.createElement("div");
-        loadingDiv.classList.add("code-preview-loading");
-        loadingDiv.innerHTML = `
-        <div class="loading-spinner"></div>
-        <span>Code preview loading...</span>
-      `;
+        // Mark both the result element AND the URL as processed immediately
+        result.dataset.previewProcessed = "true";
+        processedUrls.add(cleanUrl);
+
+        const previewContainer = createPreviewContainer();
+        previewContainer.setAttribute("data-preview-url", cleanUrl);
+
+        const loadingDiv = createLoadingIndicator();
         previewContainer.appendChild(loadingDiv);
 
-        // Try direct fetch first, then fallback to proxy
-        const tryFetch = async (url) => {
-          // Clean URL for fetching
-          const fetchUrl = url.split("#:~:text=")[0].split("#")[0];
-          // Try direct fetch first
-          try {
-            const response = await fetch(fetchUrl, { mode: "cors" });
-            if (response.ok) {
-              return response;
-            }
-          } catch (e) {
-            // Expected CORS failure, continue to proxies
-          }
+        // Append preview container immediately to show loading state
+        appendPreviewContainer(result, previewContainer);
 
-          // Try multiple proxy options
-          const proxies = [
-            corsProxyUrl, // Primary proxy from runtime config
-            "https://api.allorigins.win/raw?url=",
-            "https://cors-anywhere.herokuapp.com/",
-          ].filter(Boolean); // Filter out null/undefined values
-
-          for (const proxyUrl of proxies) {
-            try {
-              const response = await fetch(
-                proxyUrl + encodeURIComponent(fetchUrl)
-              );
-              if (response.ok) {
-                return response;
-              }
-            } catch (e) {
-              // Continue to next proxy
-            }
-          }
-
-          // Last resort: try chrome.scripting API
-          try {
-            const scriptResponse = await fetchViaScripting(fetchUrl);
-            if (scriptResponse) {
-              return scriptResponse;
-            }
-          } catch (scriptError) {
-            // Final fallback failed
-          }
-
-          throw new Error("Unable to bypass CORS restrictions");
-        };
-
-        tryFetch(cleanUrl)
+        fetchWithFallback(cleanUrl, corsProxyUrl)
           .then((response) => {
             if (!response) {
               throw new Error("No response received");
@@ -204,175 +243,59 @@ function processSearchResults(searchResults) {
           .then((html) => {
             let codeSnippet = extractTopAnswer(html);
             if (!codeSnippet) codeSnippet = extractCodeSnippetFromHTML(html);
+
             if (codeSnippet) {
-              // Smart detection: preserve HTML tags if they appear to be part of the code
-              const shouldPreserveHtml = containsCodeHtmlTags(codeSnippet);
-
-              if (!shouldPreserveHtml) {
-                codeSnippet = cleanHtmlTags(codeSnippet);
-              }
-              codeSnippet = replaceHtmlCharacters(codeSnippet);
-
-              // Remove common code snippet annotations and formatting artifacts
-              codeSnippet = removeCodeAnnotations(codeSnippet);
-
-              // Detect language before applying formatting
-              const detectedLang = detectProgrammingLanguage(codeSnippet);
-
-              // Only add line breaks after semicolons for languages that use them
-              // Exclude JSON, HTML, CSS, SQL, and other non-semicolon languages
-              if (
-                !["json", "html", "css", "sql", "xml"].includes(detectedLang)
-              ) {
-                codeSnippet = codeSnippet.replace(/;/g, ";\n");
-              }
-
-              codeSnippet = removeDuplicateLineBreaks(codeSnippet);
-
-              // Check if we've already displayed this exact content
-              const contentHash = codeSnippet.trim().substring(0, 200);
-              if (processedContent.has(contentHash)) {
-                // Remove the preview container since it's a duplicate
-                if (previewContainer.parentNode) {
-                  previewContainer.parentNode.removeChild(previewContainer);
-                }
-                return;
-              }
-              processedContent.add(contentHash);
+              // Process and clean the code snippet
+              codeSnippet = processCodeSnippet(codeSnippet);
 
               // Remove loading animation
-              const loadingDiv = previewContainer.querySelector(
-                ".code-preview-loading"
-              );
-              if (loadingDiv) {
-                loadingDiv.remove();
-              }
+              removeLoadingIndicator(previewContainer);
 
               const answerUrl = getAnswerUrl(html);
-              // Create a <link> element for the Prism theme CSS
-              var language = detectProgrammingLanguage(codeSnippet);
+              const language = detectProgrammingLanguage(codeSnippet);
 
-              const preElement = document.createElement("pre");
-              const codeElement = document.createElement("code");
+              // Create code elements
+              const { preElement, codeElement, isCollapsed, collapsedCode } =
+                createCodeElements(codeSnippet, language);
 
-              // The code element needs the language class for Prism
-              // Always ensure we have a valid language for highlighting
-              const finalLanguage = language || "clike";
-              codeElement.classList.add("language-" + finalLanguage);
-
-              // Limit to 15 lines by default
-              const lines = codeSnippet.split("\n");
-              const maxLines = 15;
-              let isCollapsed = lines.length > maxLines;
-
-              if (isCollapsed) {
-                codeElement.textContent = lines.slice(0, maxLines).join("\n");
-              } else {
-                codeElement.textContent = codeSnippet;
-              }
-
-              // Style the pre element
-              preElement.style.whiteSpace = "pre-wrap";
-              preElement.style.wordBreak = "break-word";
-              preElement.style.overflowWrap = "break-word";
-              preElement.style.paddingTop = "30px";
-              preElement.style.maxWidth = "100%";
-              preElement.style.overflow = "auto";
-              if (isCollapsed) {
-                preElement.style.maxHeight = "none";
-              }
-
-              // Correct structure: pre > code
-              preElement.appendChild(codeElement);
-
-              const button = document.createElement("button");
-              button.innerText = "Copy to Clipboard";
-              button.classList.add("copy-button");
-              previewContainer.appendChild(button);
-
+              // Add copy button
+              const copyButton = createCopyButton(codeSnippet);
+              previewContainer.appendChild(copyButton);
               previewContainer.appendChild(preElement);
 
-              button.addEventListener("click", () => {
-                copyToClipboard(codeSnippet, button);
-              });
-
-              // Add Extend button if content is collapsed
+              // Add extend/collapse button if needed
               if (isCollapsed) {
-                const extendButton = document.createElement("button");
-                extendButton.innerText = "Extend";
-                extendButton.classList.add("extend-button");
-                extendButton.style.position = "absolute";
-                extendButton.style.bottom = "10px";
-                extendButton.style.right = "10px";
-                extendButton.style.padding = "5px 15px";
-                extendButton.style.cursor = "pointer";
-                extendButton.style.zIndex = "10";
-
-                // Make preview container relative for absolute positioning
                 previewContainer.style.position = "relative";
-
-                extendButton.addEventListener("click", () => {
-                  const currentCode = codeElement.textContent;
-                  const collapsedCode = lines.slice(0, maxLines).join("\n");
-
-                  if (
-                    currentCode === collapsedCode ||
-                    extendButton.innerText === "Extend"
-                  ) {
-                    // Expand
-                    codeElement.textContent = codeSnippet;
-                    extendButton.innerText = "Collapse";
-                  } else {
-                    // Collapse
-                    codeElement.textContent = collapsedCode;
-                    extendButton.innerText = "Extend";
-                  }
-
-                  // Re-highlight after changing content
-                  if (typeof Prism !== "undefined") {
-                    Prism.highlightElement(codeElement);
-                  }
-                });
-
+                const extendButton = createExtendButton(
+                  codeElement,
+                  codeSnippet,
+                  collapsedCode
+                );
                 previewContainer.appendChild(extendButton);
               }
 
+              // Add "Go to Answer" button if URL available
               if (answerUrl) {
-                const goToAnswerButton = document.createElement("a");
-                goToAnswerButton.classList.add("go-to-answer-button");
-                goToAnswerButton.classList.add("text-center");
-                goToAnswerButton.href = answerUrl;
-                goToAnswerButton.target = "_blank";
-                goToAnswerButton.rel = "noopener noreferrer";
-                goToAnswerButton.textContent = "Go to Answer";
+                const goToAnswerButton = createGoToAnswerButton(answerUrl);
                 previewContainer.appendChild(goToAnswerButton);
               }
 
-              // Apply syntax highlighting after content is added
+              // Apply syntax highlighting
               highlightElement(previewContainer);
             } else {
-              // Don't show container if there's no code
+              // No code found, remove container
               if (previewContainer.parentNode) {
                 previewContainer.parentNode.removeChild(previewContainer);
               }
             }
           })
           .catch((error) => {
-            // Silently handle fetch failures - many sites have CORS restrictions
-            // Only log if debugging is needed
-            // console.debug(`[CodePreview] Skipped preview for ${cleanUrl}: ${error.message}`);
-
-            // Remove loading container silently
-            if (previewContainer.parentNode) {
-              previewContainer.parentNode.removeChild(previewContainer);
-            }
+            handleFetchError(previewContainer, error);
           });
-
-        // Append preview container immediately to show loading state
-        appendPreviewContainer(result, previewContainer);
       }
     } catch (exception) {
-      console.error(exception);
+      console.error("[CodePreview] Error processing search result:", exception);
+      // Continue processing other results even if one fails
     }
   }
 }
@@ -388,6 +311,11 @@ initializeExtension();
 function appendPreviewContainer(result, previewContainer) {
   // Verify the result element is still in the DOM
   if (!result || !document.body.contains(result)) {
+    return;
+  }
+
+  // Final check: don't append if this result already has a preview
+  if (result.querySelector(".code-preview-container")) {
     return;
   }
 
@@ -432,10 +360,10 @@ function appendPreviewContainer(result, previewContainer) {
       depth++;
     }
 
-    // Create a wrapper div to ensure full width
+    // Create a wrapper div to ensure full width and break out of column layout
     const wrapperDiv = document.createElement("div");
     wrapperDiv.style.cssText =
-      "width: 100%; clear: both; display: block; margin-top: 10px;";
+      "width: 100%; clear: both; display: block; margin-top: 10px; grid-column: 1 / -1;";
     wrapperDiv.appendChild(previewContainer);
 
     // Find the grid/column container (typically has id="iur" or similar)
@@ -444,9 +372,16 @@ function appendPreviewContainer(result, previewContainer) {
     );
 
     if (gridContainer) {
-      // Insert inside the grid container, at the end (before "show more" button)
-      // The "show more" button is typically a sibling after the grid
-      gridContainer.appendChild(wrapperDiv);
+      // Insert AFTER the grid container, not inside it (to avoid appearing as a column)
+      // This ensures the preview spans full width below all columns
+      if (gridContainer.nextSibling) {
+        gridContainer.parentElement.insertBefore(
+          wrapperDiv,
+          gridContainer.nextSibling
+        );
+      } else {
+        gridContainer.parentElement.appendChild(wrapperDiv);
+      }
     } else {
       // Fallback: insert at the end of fullWidthContainer
       // but before any buttons or pagination elements
@@ -609,9 +544,6 @@ function extractCodeSnippetFromHTML(html) {
     codeSnippet = codeSnippet.replace(/\r/g, "");
     // Add more replacements as needed
   }
-  if (codeSnippet && codeSnippet.length > 1000) {
-    codeSnippet = codeSnippet.substring(0, 1000) + " ...";
-  }
   return codeSnippet;
 }
 
@@ -647,32 +579,7 @@ function highlightElement(codeElement) {
     document.head.appendChild(prismScript);
   }
 }
-// function detectProgrammingLanguage1(codeSnippet) {
-//   // Define regular expressions for language detection
-//   const languageRegexMap = [
-//     {
-//       language: "javascript",
-//       regex: /(?:\b|['"\s])(?:javascript|js|node\.?js)\b/gi,
-//     },
-//     { language: "java", regex: /(?:\b|['"\s])(?:java|jdk)\b/gi },
-//     { language: "python", regex: /(?:\b|['"\s])(?:python|py)\b/gi },
-//     { language: "html", regex: /(?:\b|['"\s])(?:html|html5|htm)\b/gi },
-//     { language: "csharp", regex: /(?:\b|['"\s])(?:c#|\.net|csharp)\b/gi },
-//     { language: "c", regex: /(?:\b|['"\s])(?:c|c-lang|clang)\b/gi },
-//     { language: "cpp", regex: /(?:\b|['"\s])(?:c\+\+|cpp)\b/gi },
-//     // Add more language regex patterns as needed
-//   ];
 
-//   // Match against the regular expressions
-//   for (const { language, regex } of languageRegexMap) {
-//     if (regex.test(codeSnippet)) {
-//       return language;
-//     }
-//   }
-
-//   // If no specific language is detected, assume it's plain text or unknown
-//   return "javascript";
-// }
 function detectProgrammingLanguage(codeSnippet) {
   const snippet = codeSnippet.toLowerCase();
   let scores = {};
@@ -952,38 +859,6 @@ function extractTopAnswer(responseHTML) {
 
   return topAnswer;
 }
-function extractTopAnswer2(html) {
-  // Identify the top answer based on the specific website's HTML structure
-  // Modify the code below to match the structure of the HTML and the targeted website(s)
-
-  // Example for Stack Overflow
-  const stackOverflowRegex =
-    /<div class="js-post-body[\s\S]*?>([\s\S]*?)<\/div>/i;
-  const stackOverflowMatch = html.match(stackOverflowRegex);
-  if (stackOverflowMatch) {
-    return stackOverflowMatch[1];
-  }
-
-  // Example for GitHub
-  const githubRegex = /<div class="comment-body[\s\S]*?>([\s\S]*?)<\/div>/i;
-  const githubMatch = html.match(githubRegex);
-  if (githubMatch) {
-    return githubMatch[1];
-  }
-
-  // Example for Microsoft Docs
-  const microsoftDocsRegex =
-    /<div class="codeSnippetContainer[\s\S]*?>([\s\S]*?)<\/div>/i;
-  const microsoftDocsMatch = html.match(microsoftDocsRegex);
-  if (microsoftDocsMatch) {
-    return microsoftDocsMatch[1];
-  }
-
-  // Add more conditions with appropriate regex patterns for other programming websites as needed
-
-  // Return null if no top answer is found
-  return null;
-}
 
 function replaceHtmlCharacters(codeSnippet) {
   const heScript = document.createElement("script");
@@ -1257,27 +1132,57 @@ async function fetchViaScripting(url) {
   });
 }
 
-function copyToClipboard(text, button) {
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  document.body.removeChild(textarea);
+async function copyToClipboard(text, button) {
+  try {
+    await navigator.clipboard.writeText(text);
 
-  // Add checkmark animation
-  if (button) {
-    const originalText = button.innerText;
-    const originalWidth = button.offsetWidth + "px";
-    button.style.width = originalWidth;
-    button.style.textAlign = "center";
-    button.innerText = "✓";
-    button.classList.add("copied");
-    setTimeout(() => {
-      button.innerText = originalText;
-      button.style.width = "";
-      button.style.textAlign = "";
-      button.classList.remove("copied");
-    }, 1500);
+    // Add checkmark animation
+    if (button) {
+      const originalText = button.innerText;
+      const originalWidth = button.offsetWidth + "px";
+      button.style.width = originalWidth;
+      button.style.textAlign = "center";
+      button.innerText = "✓";
+      button.classList.add("copied");
+      setTimeout(() => {
+        button.innerText = originalText;
+        button.style.width = "";
+        button.style.textAlign = "";
+        button.classList.remove("copied");
+      }, 1500);
+    }
+  } catch (error) {
+    console.error("[CodePreview] Failed to copy to clipboard:", error);
+
+    // Fallback for older browsers or permission issues
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+
+      if (button) {
+        const originalText = button.innerText;
+        button.innerText = "✓";
+        button.classList.add("copied");
+        setTimeout(() => {
+          button.innerText = originalText;
+          button.classList.remove("copied");
+        }, 1500);
+      }
+    } catch (fallbackError) {
+      console.error("[CodePreview] Fallback copy also failed:", fallbackError);
+      if (button) {
+        const originalText = button.innerText;
+        button.innerText = "Failed";
+        setTimeout(() => {
+          button.innerText = originalText;
+        }, 1500);
+      }
+    }
   }
 }

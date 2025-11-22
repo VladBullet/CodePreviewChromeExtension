@@ -1,14 +1,19 @@
 {
   "manifest_version": 3,
   "name": "Code Preview",
-  "version": "2.1",
+  "version": "2.2",
   "description": "A Chrome extension to preview code snippets and answers to code questions in Google search results.",
   "permissions": ["scripting", "activeTab", "storage"],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": ["https://www.google.com/*"],
   "content_scripts": [
     {
       "matches": ["https://www.google.com/*"],
-      "js": ["contentScript.js", "lib/he.js", "lib/prism.js"],
+      "js": [
+        "contentScript-helpers.js",
+        "contentScript.js",
+        "lib/he.js",
+        "lib/prism.js"
+      ],
       "css": ["lib/prism.css", "lib/site.css"],
       "run_at": "document_idle"
     }
@@ -37,15 +42,9 @@
         "lib/prism.css",
         "lib/prism_dark.js",
         "lib/prism_dark.css",
-        "lib/site.css",
-        "contentScript.js",
-        "popup.js",
-        "background.js",
-        "img/icon16.png",
-        "img/icon48.png",
-        "img/icon128.png"
+        "lib/site.css"
       ],
-      "matches": ["<all_urls>"]
+      "matches": ["https://www.google.com/*"]
     }
   ]
 }
