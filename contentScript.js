@@ -15,18 +15,13 @@ async function getCorsProxyUrl() {
     const configUrl =
       "https://raw.githubusercontent.com/VladBullet/CodePreviewChromeExtension/master/proxy-config.json";
 
-    console.log("[CodePreview] Fetching CORS proxy URL from config...");
     const response = await fetch(configUrl);
 
     if (response.ok) {
       const config = await response.json();
       corsProxyUrl = config.corsProxyUrl;
-      console.log(`[CodePreview] CORS proxy URL loaded: ${corsProxyUrl}`);
       return corsProxyUrl;
     } else {
-      console.warn(
-        "[CodePreview] Failed to fetch proxy config, using fallback"
-      );
       // Fallback to a default proxy
       corsProxyUrl = "https://api.allorigins.win/raw?url=";
       return corsProxyUrl;
@@ -104,29 +99,16 @@ async function initializeExtension() {
       // Extension is enabled, process search results
       // Try multiple selectors for different Google layouts
       let searchResults = document.querySelectorAll(".g");
-      console.log(
-        `[CodePreview] Found ${searchResults.length} search results with .g selector`
-      );
 
       if (searchResults.length === 0) {
         // Try alternative selector
         searchResults = document.querySelectorAll("div[data-hveid]");
-        console.log(
-          `[CodePreview] Trying alternative selector: found ${searchResults.length} results`
-        );
       }
 
       if (searchResults.length === 0) {
         // Try another alternative
         searchResults = document.querySelectorAll(".MjjYud");
-        console.log(
-          `[CodePreview] Trying .MjjYud selector: found ${searchResults.length} results`
-        );
       }
-
-      console.log(
-        `[CodePreview] Processing ${searchResults.length} search results`
-      );
 
       if (searchResults.length > 0) {
         processSearchResults(searchResults);
@@ -146,13 +128,9 @@ function processSearchResults(searchResults) {
       if (linkElement && isCodeURL(linkElement.href)) {
         // Skip if already processed
         if (processedUrls.has(linkElement.href)) {
-          console.log(
-            `[CodePreview] Skipping duplicate URL: ${linkElement.href}`
-          );
           continue;
         }
         processedUrls.add(linkElement.href);
-        console.log(`[CodePreview] Processing code URL: ${linkElement.href}`);
         const previewContainer = document.createElement("div");
         previewContainer.classList.add("code-preview-container");
         previewContainer.classList.add("code-snippet-container");
@@ -170,16 +148,12 @@ function processSearchResults(searchResults) {
         const tryFetch = async (url) => {
           // Try direct fetch first
           try {
-            console.log(`[CodePreview] Trying direct fetch: ${url}`);
             const response = await fetch(url, { mode: "cors" });
             if (response.ok) {
-              console.log(`[CodePreview] Direct fetch succeeded!`);
               return response;
             }
           } catch (e) {
-            console.log(
-              `[CodePreview] Direct fetch failed (expected for CORS): ${e.message}`
-            );
+            // Expected CORS failure, continue to proxies
           }
 
           // Try multiple proxy options
@@ -191,33 +165,23 @@ function processSearchResults(searchResults) {
 
           for (const proxyUrl of proxies) {
             try {
-              console.log(`[CodePreview] Trying proxy: ${proxyUrl}`);
               const response = await fetch(proxyUrl + encodeURIComponent(url));
               if (response.ok) {
-                console.log(`[CodePreview] Proxy ${proxyUrl} succeeded!`);
                 return response;
               }
             } catch (e) {
-              console.log(
-                `[CodePreview] Proxy ${proxyUrl} failed: ${e.message}`
-              );
+              // Continue to next proxy
             }
           }
 
           // Last resort: try chrome.scripting API
-          console.log(
-            `[CodePreview] All proxies failed, trying chrome.scripting API`
-          );
           try {
             const scriptResponse = await fetchViaScripting(url);
             if (scriptResponse) {
-              console.log(`[CodePreview] chrome.scripting API succeeded!`);
               return scriptResponse;
             }
           } catch (scriptError) {
-            console.log(
-              `[CodePreview] chrome.scripting API failed: ${scriptError.message}`
-            );
+            // Final fallback failed
           }
 
           throw new Error("All fetch methods failed");
@@ -228,24 +192,14 @@ function processSearchResults(searchResults) {
             if (!response) {
               throw new Error("No response received");
             }
-            console.log(
-              `[CodePreview] Fetch response status: ${response.status}`
-            );
             return response.clone().text();
           })
           .then((html) => {
-            console.log(`[CodePreview] HTML received, length: ${html.length}`);
-
             let codeSnippet = extractTopAnswer(html);
-            console.log(`[CodePreview] Top answer found: ${!!codeSnippet}`);
             if (!codeSnippet) codeSnippet = extractCodeSnippetFromHTML(html);
-            console.log(`[CodePreview] Code snippet found: ${!!codeSnippet}`);
             if (codeSnippet) {
               // Smart detection: preserve HTML tags if they appear to be part of the code
               const shouldPreserveHtml = containsCodeHtmlTags(codeSnippet);
-              console.log(
-                `[CodePreview] Contains code HTML tags: ${shouldPreserveHtml}`
-              );
 
               if (!shouldPreserveHtml) {
                 codeSnippet = cleanHtmlTags(codeSnippet);
@@ -257,9 +211,6 @@ function processSearchResults(searchResults) {
               // Check if we've already displayed this exact content
               const contentHash = codeSnippet.trim().substring(0, 200);
               if (processedContent.has(contentHash)) {
-                console.log(
-                  `[CodePreview] Skipping duplicate content from ${linkElement.href}`
-                );
                 // Remove the preview container since it's a duplicate
                 if (previewContainer.parentNode) {
                   previewContainer.parentNode.removeChild(previewContainer);
@@ -279,17 +230,6 @@ function processSearchResults(searchResults) {
               const answerUrl = getAnswerUrl(html);
               // Create a <link> element for the Prism theme CSS
               var language = detectProgrammingLanguage(codeSnippet);
-              console.log(`[CodePreview] Detected language: ${language}`);
-              console.log(
-                `[CodePreview] Code snippet preview:`,
-                codeSnippet.substring(0, 200)
-              );
-              console.log(
-                `[CodePreview] Full snippet length: ${codeSnippet.length} chars`
-              );
-              // previewContainer.style.border = "1px solid #ccc";
-              // previewContainer.style.borderRadius = "15px";
-              // previewContainer.style.padding = "5px";
 
               const preElement = document.createElement("pre");
               const codeElement = document.createElement("code");
@@ -298,9 +238,6 @@ function processSearchResults(searchResults) {
               // Always ensure we have a valid language for highlighting
               const finalLanguage = language || "clike";
               codeElement.classList.add("language-" + finalLanguage);
-              console.log(
-                `[CodePreview] Added class: language-${finalLanguage}`
-              );
 
               // Limit to 15 lines by default
               const lines = codeSnippet.split("\n");
@@ -391,12 +328,8 @@ function processSearchResults(searchResults) {
               }
 
               // Apply syntax highlighting after content is added
-              console.log("[CodePreview] About to highlight initial content");
               highlightElement(previewContainer);
             } else {
-              console.log(
-                `[CodePreview] No code found for ${linkElement.href}`
-              );
               // Don't show container if there's no code
               if (previewContainer.parentNode) {
                 previewContainer.parentNode.removeChild(previewContainer);
@@ -431,9 +364,6 @@ initializeExtension();
 function appendPreviewContainer(result, previewContainer) {
   // Verify the result element is still in the DOM
   if (!result || !document.body.contains(result)) {
-    console.log(
-      "[CodePreview] Result element not in DOM, cannot append preview"
-    );
     return;
   }
 
@@ -542,10 +472,6 @@ function appendPreviewContainer(result, previewContainer) {
       } else {
         result.appendChild(previewContainer);
       }
-    } else {
-      console.log(
-        "[CodePreview] Result element disconnected, cannot append preview"
-      );
     }
   }
 }
@@ -614,7 +540,6 @@ function extractCodeSnippetFromHTML(html) {
   // Try pre first (usually contains full code blocks)
   const preMatches = html.match(preRegex);
   if (preMatches && preMatches.length > 0) {
-    console.log(`[CodePreview] Found ${preMatches.length} <pre> tags`);
     // Filter out very short snippets (likely not code)
     const validPre = preMatches.filter((match) => {
       const cleaned = match.replace(/<[^>]*>/g, "").trim();
@@ -634,7 +559,6 @@ function extractCodeSnippetFromHTML(html) {
   if (!codeSnippet) {
     const codeMatches = html.match(codeRegex);
     if (codeMatches && codeMatches.length > 0) {
-      console.log(`[CodePreview] Found ${codeMatches.length} <code> tags`);
       codeSnippet = codeMatches
         .slice(0, 5) // Take first 5 code snippets
         .map((match) =>
@@ -664,20 +588,10 @@ function extractCodeSnippetFromHTML(html) {
 }
 
 function highlightElement(codeElement) {
-  console.log("[CodePreview] highlightElement called");
-  console.log("[CodePreview] codeElement:", codeElement);
-
   // Determine theme: if forceDarkTheme is true, use dark; otherwise use light
-  // (we're not auto-detecting anymore, user controls it with the toggle)
   const isDarkMode = forceDarkTheme;
   const prismCssFile = isDarkMode ? "lib/prism_dark.css" : "lib/prism.css";
   const prismJsFile = isDarkMode ? "lib/prism_dark.js" : "lib/prism.js";
-
-  console.log(
-    `[CodePreview] Force dark theme: ${forceDarkTheme}, Using: ${
-      isDarkMode ? "dark" : "light"
-    }`
-  );
 
   // Check if Prism CSS is already loaded
   if (!document.querySelector('link[href*="prism"]')) {
@@ -685,35 +599,19 @@ function highlightElement(codeElement) {
     linkElement.rel = "stylesheet";
     linkElement.href = chrome.runtime.getURL(prismCssFile);
     document.head.appendChild(linkElement);
-    console.log(`[CodePreview] Prism CSS loaded: ${prismCssFile}`);
-  } else {
-    console.log("[CodePreview] Prism CSS already loaded");
   }
 
   // Check if Prism is already loaded
   if (typeof Prism !== "undefined") {
     // Prism is already loaded, just highlight
-    console.log("[CodePreview] Prism is available, highlighting now");
-    console.log(
-      "[CodePreview] Code elements found:",
-      codeElement.querySelectorAll('code[class*="language-"]').length
-    );
     Prism.highlightAllUnder(codeElement);
-    console.log("[CodePreview] Prism.highlightAllUnder executed");
   } else {
     // Load Prism script if not already loaded
-    console.log("[CodePreview] Loading Prism script");
     const prismScript = document.createElement("script");
     prismScript.src = chrome.runtime.getURL(prismJsFile);
     prismScript.onload = () => {
       // Prism is loaded, continue with highlighting
-      console.log("[CodePreview] Prism script loaded, highlighting now");
-      console.log(
-        "[CodePreview] Code elements found:",
-        codeElement.querySelectorAll('code[class*="language-"]').length
-      );
       Prism.highlightAllUnder(codeElement);
-      console.log("[CodePreview] Prism.highlightAllUnder executed");
     };
     prismScript.onerror = (error) => {
       console.error("[CodePreview] Failed to load Prism script:", error);
@@ -926,8 +824,6 @@ function detectProgrammingLanguage(codeSnippet) {
     }
   }
 
-  console.log("[CodePreview] Language detection scores:", scores);
-
   // Find the language with highest score
   let detectedLanguage = "clike"; // default to C-like for generic highlighting
   let maxScore = 0;
@@ -942,20 +838,11 @@ function detectProgrammingLanguage(codeSnippet) {
   // Always return something that highlights - never plain text
   // clike highlights common programming keywords (if, for, while, return, etc.)
   if (maxScore === 0) {
-    console.log(
-      "[CodePreview] No patterns matched, defaulting to clike for basic highlighting"
-    );
     return "clike";
   } else if (maxScore < 5) {
-    console.log(
-      `[CodePreview] Low confidence (${maxScore}), using best guess: ${detectedLanguage}`
-    );
     return detectedLanguage;
   }
 
-  console.log(
-    `[CodePreview] Detected ${detectedLanguage} with score ${maxScore}`
-  );
   return detectedLanguage;
 }
 
@@ -1020,23 +907,17 @@ function extractTopAnswer(responseHTML) {
     const { domain, regex } = website;
 
     if (responseHTML.includes(domain)) {
-      console.log(`[CodePreview] Trying to extract from ${domain}`);
       const matches = responseHTML.match(regex);
 
       if (matches) {
         // Find the first non-undefined capture group (for regex with multiple alternatives)
         for (let i = 1; i < matches.length; i++) {
           if (matches[i]) {
-            console.log(
-              `[CodePreview] Successfully extracted answer from ${domain}, length: ${matches[i].length}`
-            );
             topAnswer = matches[i];
             break;
           }
         }
         if (topAnswer) break;
-      } else {
-        console.log(`[CodePreview] No match found for ${domain}`);
       }
     }
   }
