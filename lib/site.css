@@ -152,3 +152,15 @@
   content: none !important;
   display: none !important;
 }
+
+/* Remove extra background highlighting from operators and other tokens */
+.token.operator,
+.token.entity,
+.token.url {
+  background: none !important;
+}
+
+/* Reduce visual emphasis on punctuation for cleaner look */
+.token.punctuation {
+  opacity: 0.8 !important;
+}
