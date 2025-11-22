@@ -142,3 +142,13 @@
 .code-preview-container div.code-toolbar {
   position: static !important;
 }
+
+/* Disable Prism's show-invisibles plugin - hide CR, LF, CRLF, tab, and space markers */
+.token.cr:before,
+.token.lf:before,
+.token.crlf:before,
+.token.tab:before,
+.token.space:before {
+  content: none !important;
+  display: none !important;
+}

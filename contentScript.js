@@ -126,11 +126,14 @@ function processSearchResults(searchResults) {
     try {
       const linkElement = result.querySelector('a[href^="http"]');
       if (linkElement && isCodeURL(linkElement.href)) {
+        // Clean URL - remove Google's text fragment highlights
+        const cleanUrl = linkElement.href.split("#:~:text=")[0];
+
         // Skip if already processed
-        if (processedUrls.has(linkElement.href)) {
+        if (processedUrls.has(cleanUrl)) {
           continue;
         }
-        processedUrls.add(linkElement.href);
+        processedUrls.add(cleanUrl);
         const previewContainer = document.createElement("div");
         previewContainer.classList.add("code-preview-container");
         previewContainer.classList.add("code-snippet-container");
@@ -146,9 +149,11 @@ function processSearchResults(searchResults) {
 
         // Try direct fetch first, then fallback to proxy
         const tryFetch = async (url) => {
+          // Clean URL for fetching
+          const fetchUrl = url.split("#:~:text=")[0].split("#")[0];
           // Try direct fetch first
           try {
-            const response = await fetch(url, { mode: "cors" });
+            const response = await fetch(fetchUrl, { mode: "cors" });
             if (response.ok) {
               return response;
             }
@@ -165,7 +170,9 @@ function processSearchResults(searchResults) {
 
           for (const proxyUrl of proxies) {
             try {
-              const response = await fetch(proxyUrl + encodeURIComponent(url));
+              const response = await fetch(
+                proxyUrl + encodeURIComponent(fetchUrl)
+              );
               if (response.ok) {
                 return response;
               }
@@ -176,7 +183,7 @@ function processSearchResults(searchResults) {
 
           // Last resort: try chrome.scripting API
           try {
-            const scriptResponse = await fetchViaScripting(url);
+            const scriptResponse = await fetchViaScripting(fetchUrl);
             if (scriptResponse) {
               return scriptResponse;
             }
@@ -184,10 +191,10 @@ function processSearchResults(searchResults) {
             // Final fallback failed
           }
 
-          throw new Error("All fetch methods failed");
+          throw new Error("Unable to bypass CORS restrictions");
         };
 
-        tryFetch(linkElement.href)
+        tryFetch(cleanUrl)
           .then((response) => {
             if (!response) {
               throw new Error("No response received");
@@ -205,7 +212,21 @@ function processSearchResults(searchResults) {
                 codeSnippet = cleanHtmlTags(codeSnippet);
               }
               codeSnippet = replaceHtmlCharacters(codeSnippet);
-              codeSnippet = codeSnippet.replace(/;/g, ";\n");
+
+              // Remove common code snippet annotations and formatting artifacts
+              codeSnippet = removeCodeAnnotations(codeSnippet);
+
+              // Detect language before applying formatting
+              const detectedLang = detectProgrammingLanguage(codeSnippet);
+
+              // Only add line breaks after semicolons for languages that use them
+              // Exclude JSON, HTML, CSS, SQL, and other non-semicolon languages
+              if (
+                !["json", "html", "css", "sql", "xml"].includes(detectedLang)
+              ) {
+                codeSnippet = codeSnippet.replace(/;/g, ";\n");
+              }
+
               codeSnippet = removeDuplicateLineBreaks(codeSnippet);
 
               // Check if we've already displayed this exact content
@@ -337,8 +358,11 @@ function processSearchResults(searchResults) {
             }
           })
           .catch((error) => {
-            console.error(`[CodePreview] Fetch error:`, error);
-            // Don't show container on error
+            // Silently handle fetch failures - many sites have CORS restrictions
+            // Only log if debugging is needed
+            // console.debug(`[CodePreview] Skipped preview for ${cleanUrl}: ${error.message}`);
+
+            // Remove loading container silently
             if (previewContainer.parentNode) {
               previewContainer.parentNode.removeChild(previewContainer);
             }
@@ -579,6 +603,10 @@ function extractCodeSnippetFromHTML(html) {
     codeSnippet = codeSnippet.replace(/&ldquo;/g, "“");
     codeSnippet = codeSnippet.replace(/&rdquo;/g, "”");
     codeSnippet = codeSnippet.replace(/&#47;/g, "/");
+    // Remove carriage return characters (CR) - both entity and literal
+    codeSnippet = codeSnippet.replace(/&#13;/g, "");
+    codeSnippet = codeSnippet.replace(/&#x0D;/gi, "");
+    codeSnippet = codeSnippet.replace(/\r/g, "");
     // Add more replacements as needed
   }
   if (codeSnippet && codeSnippet.length > 1000) {
@@ -1064,6 +1092,36 @@ function getAnswerUrl(html) {
   return null;
 }
 
+function removeCodeAnnotations(text) {
+  // Remove common annotations that appear in code snippets from websites
+
+  // Remove "CR LF", "LF", "CR" labels that appear at line endings or standalone
+  text = text.replace(/\s*(CR\s*LF|CRLF)\s*/gi, "");
+
+  // More aggressive LF/CR removal at line ends and as standalone text
+  text = text.replace(/\s+LF\s*$/gm, ""); // LF at end of lines
+  text = text.replace(/^\s*LF\s+/gm, ""); // LF at start of lines
+  text = text.replace(/\s+LF\s+/g, " "); // LF in middle with spaces
+  text = text.replace(/\bLF\b/g, ""); // Any remaining standalone LF
+
+  text = text.replace(/\s+CR\s*$/gm, ""); // CR at end of lines
+  text = text.replace(/^\s*CR\s+/gm, ""); // CR at start of lines
+  text = text.replace(/\s+CR\s+/g, " "); // CR in middle with spaces
+  text = text.replace(/\bCR\b/g, ""); // Any remaining standalone CR
+
+  // Remove line number annotations like "1:", "2:", etc at start of lines
+  text = text.replace(/^\s*\d+:\s*/gm, "");
+
+  // Remove copy/paste buttons text that might be in the snippet
+  text = text.replace(/\[?copy\]?/gi, "");
+  text = text.replace(/\[?copied\]?/gi, "");
+
+  // Remove "Show more" or similar UI text
+  text = text.replace(/\s*(show more|see more|read more|view more)\s*/gi, "");
+
+  return text;
+}
+
 function removeDuplicateLineBreaks(text) {
   return text.replace(/\n+/g, "\n");
 }
@@ -1160,6 +1218,10 @@ function cleanHtmlTags(html) {
   text = text.replace(/&hellip;/g, "...");
   text = text.replace(/&mdash;/g, "—");
   text = text.replace(/&ndash;/g, "–");
+  // Remove carriage return characters (CR) - both entity and literal
+  text = text.replace(/&#13;/g, "");
+  text = text.replace(/&#x0D;/gi, "");
+  text = text.replace(/\r/g, "");
 
   // Clean up whitespace
   text = text.replace(/\n\s*\n\s*\n/g, "\n\n"); // Max 2 line breaks
