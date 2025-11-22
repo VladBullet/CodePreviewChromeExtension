@@ -1,5 +1,40 @@
 let isExtensionEnabled = true;
 let forceDarkTheme = false;
+let corsProxyUrl = null; // Will be fetched at runtime
+
+// Function to fetch the CORS proxy URL from a remote endpoint
+async function getCorsProxyUrl() {
+  // Return cached value if already fetched
+  if (corsProxyUrl) {
+    return corsProxyUrl;
+  }
+
+  try {
+    // Fetch the proxy URL from your remote endpoint
+    // Replace this URL with your actual endpoint that returns the proxy URL
+    const configUrl = 'https://raw.githubusercontent.com/VladBullet/CodePreviewChromeExtension/master/proxy-config.json';
+    
+    console.log('[CodePreview] Fetching CORS proxy URL from config...');
+    const response = await fetch(configUrl);
+    
+    if (response.ok) {
+      const config = await response.json();
+      corsProxyUrl = config.corsProxyUrl;
+      console.log(`[CodePreview] CORS proxy URL loaded: ${corsProxyUrl}`);
+      return corsProxyUrl;
+    } else {
+      console.warn('[CodePreview] Failed to fetch proxy config, using fallback');
+      // Fallback to a default proxy
+      corsProxyUrl = 'https://api.allorigins.win/raw?url=';
+      return corsProxyUrl;
+    }
+  } catch (error) {
+    console.error('[CodePreview] Error fetching CORS proxy URL:', error);
+    // Fallback to a default proxy
+    corsProxyUrl = 'https://api.allorigins.win/raw?url=';
+    return corsProxyUrl;
+  }
+}
 
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
   if (message.action === "getToggleState") {
@@ -44,7 +79,10 @@ function showCodePreviews() {
 }
 
 // Initialize extension - load state and process search results
-function initializeExtension() {
+async function initializeExtension() {
+  // Fetch CORS proxy URL first
+  await getCorsProxyUrl();
+  
   // Load initial state from storage
   chrome.storage.local.get(
     ["extensionEnabled", "forceDarkTheme"],
@@ -143,10 +181,10 @@ function processSearchResults(searchResults) {
 
           // Try multiple proxy options
           const proxies = [
-            "https://corsproxyanywhere.onrender.com/",
+            corsProxyUrl, // Primary proxy from runtime config
             "https://api.allorigins.win/raw?url=",
             "https://cors-anywhere.herokuapp.com/",
-          ];
+          ].filter(Boolean); // Filter out null/undefined values
 
           for (const proxyUrl of proxies) {
             try {
